@@ -7,7 +7,7 @@ import { t } from "@/lib/i18n";
 import { useStock } from "@/lib/store";
 
 export default function SetupPage() {
-  const { state, startFresh, startSample } = useStock();
+  const { state, startFresh, startSample, busy, error: storeError } = useStock();
   const lang = state.language;
   const [name, setName] = useState(state.businessName);
   const [error, setError] = useState("");
@@ -67,12 +67,18 @@ export default function SetupPage() {
         </ol>
       </div>
 
+      {storeError ? (
+        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+          {storeError}
+        </p>
+      ) : null}
+
       <div className="mt-6 flex flex-col gap-3">
-        <Button full onClick={startReal}>
+        <Button full disabled={busy} onClick={startReal}>
           {t(lang, "getStarted")}
         </Button>
-        <Button full variant="secondary" onClick={startWithSample}>
-          {t(lang, "trySample")}
+        <Button full variant="secondary" disabled={busy} onClick={startWithSample}>
+          {busy ? "…" : t(lang, "trySample")}
         </Button>
       </div>
     </div>

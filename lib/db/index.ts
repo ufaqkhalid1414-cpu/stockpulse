@@ -1,8 +1,15 @@
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { DatabaseSync } from "node:sqlite";
 
-const DATA_DIR = path.join(process.cwd(), "data");
+function resolveDataDir() {
+  // Vercel serverless only allows writes under /tmp (see Vercel KB on SQLite).
+  if (process.env.VERCEL) return path.join(os.tmpdir(), "stockpulse");
+  return path.join(process.cwd(), "data");
+}
+
+const DATA_DIR = resolveDataDir();
 const DB_PATH = path.join(DATA_DIR, "stockpulse.sqlite");
 const BACKUP_DIR = path.join(DATA_DIR, "backups");
 

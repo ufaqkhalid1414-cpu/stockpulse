@@ -7,20 +7,29 @@ import type { Lang } from "@/lib/i18n";
 export const runtime = "nodejs";
 
 export async function GET() {
-  const jar = await cookies();
-  const id = jar.get(BUSINESS_COOKIE)?.value;
-  if (!id) {
-    return NextResponse.json({ business: null, businesses: listBusinesses().map((b) => ({ id: b.id, name: b.name })) });
+  try {
+    const jar = await cookies();
+    const id = jar.get(BUSINESS_COOKIE)?.value;
+    if (!id) {
+      return NextResponse.json({ business: null, businesses: listBusinesses().map((b) => ({ id: b.id, name: b.name })) });
+    }
+    const state = buildBusinessState(id);
+    if (!state) {
+      jar.delete(BUSINESS_COOKIE);
+      return NextResponse.json({ business: null, businesses: listBusinesses().map((b) => ({ id: b.id, name: b.name })) });
+    }
+    return NextResponse.json({ business: state });
+  } catch (err) {
+    console.error("[api/business GET]", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Database unavailable", business: null, businesses: [] },
+      { status: 503 },
+    );
   }
-  const state = buildBusinessState(id);
-  if (!state) {
-    jar.delete(BUSINESS_COOKIE);
-    return NextResponse.json({ business: null, businesses: listBusinesses().map((b) => ({ id: b.id, name: b.name })) });
-  }
-  return NextResponse.json({ business: state });
 }
 
 export async function POST(request: Request) {
+  try {
   const body = (await request.json()) as {
     action?: "create" | "sample" | "switch" | "reset";
     name?: string;
@@ -55,4 +64,11 @@ export async function POST(request: Request) {
   const jar = await cookies();
   jar.set(BUSINESS_COOKIE, created.id, { path: "/", httpOnly: false, sameSite: "lax" });
   return NextResponse.json({ business: buildBusinessState(created.id) });
+  } catch (err) {
+    console.error("[api/business POST]", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Could not save your business" },
+      { status: 503 },
+    );
+  }
 }
