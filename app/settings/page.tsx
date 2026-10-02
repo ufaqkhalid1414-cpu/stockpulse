@@ -12,12 +12,21 @@ import { useStock } from "@/lib/store";
 import { useRouter } from "next/navigation";
 
 export default function SettingsPage() {
-  const { state, setBusinessName, setOwnerWhatsapp, runBackup, sendDailyReport, sendWeeklyChart, reset, busy, error } =
-    useStock();
+  const {
+    state,
+    setBusinessName,
+    runBackup,
+    sendDailyReport,
+    sendWeeklyChart,
+    reset,
+    logout,
+    busy,
+    error,
+    phone,
+  } = useStock();
   const lang = state.language;
   const router = useRouter();
   const [name, setName] = useState(state.businessName);
-  const [whatsapp, setWhatsapp] = useState(state.ownerWhatsapp || "");
   const [saved, setSaved] = useState(false);
   const [backupFlash, setBackupFlash] = useState(false);
   const [reportPreview, setReportPreview] = useState("");
@@ -26,8 +35,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     setName(state.businessName);
-    setWhatsapp(state.ownerWhatsapp || "");
-  }, [state.businessName, state.ownerWhatsapp]);
+  }, [state.businessName]);
 
   return (
     <AppShell>
@@ -45,28 +53,37 @@ export default function SettingsPage() {
           <VoiceInput id="biz" lang={lang} value={name} onChange={setName} />
         </Field>
         <Field id="owner-wa" label={t(lang, "ownerWhatsapp")}>
-          <VoiceInput
+          <input
             id="owner-wa"
-            lang={lang}
-            value={whatsapp}
-            onChange={setWhatsapp}
-            placeholder={t(lang, "whatsappPlaceholder")}
+            className="field"
+            value={phone || state.ownerWhatsapp || ""}
+            readOnly
             dir="ltr"
           />
-          <p className="mt-1.5 text-xs text-navy/55">{t(lang, "ownerWhatsappHint")}</p>
+          <p className="mt-1.5 text-xs text-navy/55">{t(lang, "ownerWhatsappLocked")}</p>
         </Field>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button
             disabled={busy}
             onClick={async () => {
               if (!name.trim()) return;
               await setBusinessName(name.trim());
-              await setOwnerWhatsapp(whatsapp);
               setSaved(true);
               window.setTimeout(() => setSaved(false), 1800);
             }}
           >
             {saved ? t(lang, "saved") : t(lang, "saveChanges")}
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={busy}
+            onClick={async () => {
+              await logout();
+              markScrollTop();
+              router.push("/", { scroll: false });
+            }}
+          >
+            {t(lang, "logOut")}
           </Button>
         </div>
       </div>

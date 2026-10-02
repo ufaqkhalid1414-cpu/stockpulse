@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ensureDbReady, persistDb } from "@/lib/db";
-import { requireBusiness } from "@/lib/session";
+import { requireBusiness, getSession } from "@/lib/session";
 import {
   addProduct,
   addStaff,
@@ -28,14 +28,14 @@ function baseUrl(request: Request) {
 export async function GET() {
   await ensureDbReady();
   const business = await requireBusiness();
-  if (!business) return NextResponse.json({ error: "No business selected" }, { status: 401 });
+  if (!business) return NextResponse.json({ error: "Please log in with WhatsApp first" }, { status: 401 });
   return NextResponse.json({ business: buildBusinessState(business.id) });
 }
 
 export async function PATCH(request: Request) {
   await ensureDbReady();
   const business = await requireBusiness();
-  if (!business) return NextResponse.json({ error: "No business selected" }, { status: 401 });
+  if (!business) return NextResponse.json({ error: "Please log in with WhatsApp first" }, { status: 401 });
   const body = (await request.json()) as {
     name?: string;
     language?: Lang;
@@ -45,7 +45,8 @@ export async function PATCH(request: Request) {
   updateBusiness(business.id, {
     name: body.name,
     language: body.language,
-    ownerWhatsapp: body.ownerWhatsapp,
+    // Owner WhatsApp is the login identity — keep it locked to the verified session phone
+    ownerWhatsapp: (await getSession())?.phone ?? business.owner_whatsapp,
     priceThreshold: body.priceThreshold,
   });
   await persistDb();
@@ -55,7 +56,7 @@ export async function PATCH(request: Request) {
 export async function POST(request: Request) {
   await ensureDbReady();
   const business = await requireBusiness();
-  if (!business) return NextResponse.json({ error: "No business selected" }, { status: 401 });
+  if (!business) return NextResponse.json({ error: "Please log in with WhatsApp first" }, { status: 401 });
   const body = (await request.json()) as Record<string, unknown>;
   const action = String(body.action || "");
 

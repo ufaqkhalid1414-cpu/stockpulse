@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { ensureDbReady, persistDb } from "@/lib/db";
-import { buildBusinessState, createBusiness, deleteBusiness, listBusinesses } from "@/lib/db/queries";
-import { BUSINESS_COOKIE } from "@/lib/session";
+import { buildBusinessState, createBusiness, deleteBusiness } from "@/lib/db/queries";
+import {
+  attachBusinessToSession,
+  destroySession,
+  getSession,
+  requireSession,
+} from "@/lib/session";
 import type { Lang } from "@/lib/i18n";
 
 export const runtime = "nodejs";
@@ -10,21 +14,47 @@ export const runtime = "nodejs";
 export async function GET() {
   try {
     await ensureDbReady();
-    const jar = await cookies();
-    const id = jar.get(BUSINESS_COOKIE)?.value;
-    if (!id) {
-      return NextResponse.json({ business: null, businesses: listBusinesses().map((b) => ({ id: b.id, name: b.name })) });
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({
+        authenticated: false,
+        needsSetup: false,
+        phone: null,
+        business: null,
+      });
     }
-    const state = buildBusinessState(id);
+    if (!session.businessId) {
+      return NextResponse.json({
+        authenticated: true,
+        needsSetup: true,
+        phone: session.phone,
+        business: null,
+      });
+    }
+    const state = buildBusinessState(session.businessId);
     if (!state) {
-      jar.delete(BUSINESS_COOKIE);
-      return NextResponse.json({ business: null, businesses: listBusinesses().map((b) => ({ id: b.id, name: b.name })) });
+      // Stale session business — keep phone auth, force setup
+      return NextResponse.json({
+        authenticated: true,
+        needsSetup: true,
+        phone: session.phone,
+        business: null,
+      });
     }
-    return NextResponse.json({ business: state });
+    return NextResponse.json({
+      authenticated: true,
+      needsSetup: false,
+      phone: session.phone,
+      business: state,
+    });
   } catch (err) {
     console.error("[api/business GET]", err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Database unavailable", business: null, businesses: [] },
+      {
+        error: err instanceof Error ? err.message : "Database unavailable",
+        authenticated: false,
+        business: null,
+      },
       { status: 503 },
     );
   }
@@ -33,42 +63,51 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     await ensureDbReady();
-    const body = (await request.json()) as {
-      action?: "create" | "sample" | "switch" | "reset";
-      name?: string;
-      language?: Lang;
-      ownerWhatsapp?: string;
-      businessId?: string;
-    };
-
-    if (body.action === "switch" && body.businessId) {
-      const state = buildBusinessState(body.businessId);
-      if (!state) return NextResponse.json({ error: "Business not found" }, { status: 404 });
-      const jar = await cookies();
-      jar.set(BUSINESS_COOKIE, body.businessId, { path: "/", httpOnly: false, sameSite: "lax" });
-      return NextResponse.json({ business: state });
+    const session = await requireSession();
+    if (!session) {
+      return NextResponse.json({ error: "Please log in with WhatsApp first" }, { status: 401 });
     }
 
+    const body = (await request.json()) as {
+      action?: "create" | "sample" | "reset";
+      name?: string;
+      language?: Lang;
+    };
+
     if (body.action === "reset") {
-      const jar = await cookies();
-      const id = jar.get(BUSINESS_COOKIE)?.value;
-      if (id) deleteBusiness(id);
-      jar.delete(BUSINESS_COOKIE);
+      if (session.businessId) deleteBusiness(session.businessId);
+      await destroySession();
       await persistDb();
-      return NextResponse.json({ business: null });
+      return NextResponse.json({ authenticated: false, business: null });
+    }
+
+    // Creating a business requires verified phone; only when no business yet
+    if (session.businessId) {
+      const existing = buildBusinessState(session.businessId);
+      if (existing) {
+        return NextResponse.json({ error: "You already have a business on this login" }, { status: 409 });
+      }
+    }
+
+    if (body.action !== "create" && body.action !== "sample") {
+      return NextResponse.json({ error: "Unknown action" }, { status: 400 });
     }
 
     const name = (body.name || "").trim() || "General Store";
     const created = createBusiness({
       name,
       language: body.language ?? "en",
-      ownerWhatsapp: body.ownerWhatsapp,
+      ownerWhatsapp: session.phone,
       seedSample: body.action === "sample",
     });
-    const jar = await cookies();
-    jar.set(BUSINESS_COOKIE, created.id, { path: "/", httpOnly: false, sameSite: "lax" });
+    await attachBusinessToSession(created.id);
     await persistDb();
-    return NextResponse.json({ business: buildBusinessState(created.id) });
+    return NextResponse.json({
+      authenticated: true,
+      needsSetup: false,
+      phone: session.phone,
+      business: buildBusinessState(created.id),
+    });
   } catch (err) {
     console.error("[api/business POST]", err);
     return NextResponse.json(

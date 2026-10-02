@@ -9,10 +9,16 @@ type StoreValue = {
   ready: boolean;
   busy: boolean;
   error: string | null;
+  authenticated: boolean;
+  needsSetup: boolean;
+  phone: string | null;
   state: AppState;
   setLanguage: (language: Lang) => Promise<void>;
   setBusinessName: (businessName: string) => Promise<void>;
   setOwnerWhatsapp: (ownerWhatsapp: string) => Promise<void>;
+  requestOtp: (phone: string) => Promise<{ sent: boolean; devCode?: string; warning?: string }>;
+  verifyOtp: (phone: string, code: string) => Promise<void>;
+  logout: () => Promise<void>;
   startFresh: (businessName: string) => Promise<void>;
   startSample: (businessName: string) => Promise<void>;
   addProduct: (input: {
@@ -72,7 +78,20 @@ function networkMessage(err: unknown) {
 }
 
 async function readJson(res: Response) {
-  let data: { business?: ApiBusiness | null; error?: string; alert?: AlertItem | null; preview?: string; sent?: unknown };
+  let data: {
+    business?: ApiBusiness | null;
+    error?: string;
+    alert?: AlertItem | null;
+    preview?: string;
+    sent?: unknown;
+    authenticated?: boolean;
+    needsSetup?: boolean;
+    phone?: string | null;
+    ok?: boolean;
+    devCode?: string;
+    warning?: string;
+    sentWhatsapp?: boolean;
+  };
   try {
     data = (await res.json()) as typeof data;
   } catch {
@@ -87,10 +106,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [phone, setPhone] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const res = await fetch("/api/business", { cache: "no-store" });
     const data = await readJson(res);
+    setAuthenticated(Boolean(data.authenticated));
+    setNeedsSetup(Boolean(data.needsSetup));
+    setPhone(data.phone ?? null);
     setState(toState(data.business));
   }, []);
 
@@ -102,6 +127,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         if (!cancelled) {
           setState(defaultState);
+          setAuthenticated(false);
+          setNeedsSetup(false);
+          setPhone(null);
           setError(networkMessage(err));
         }
       } finally {
@@ -127,18 +155,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const patchBusiness = useCallback(
-    async (body: Record<string, unknown>) => {
-      const res = await fetch("/api/stock", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await readJson(res);
-      setState(toState(data.business));
-    },
-    [],
-  );
+  const patchBusiness = useCallback(async (body: Record<string, unknown>) => {
+    const res = await fetch("/api/stock", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await readJson(res);
+    setState(toState(data.business));
+  }, []);
 
   const stockAction = useCallback(async (body: Record<string, unknown>) => {
     const res = await fetch("/api/stock", {
@@ -148,6 +173,51 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     });
     return readJson(res);
   }, []);
+
+  const requestOtp = useCallback(
+    async (nextPhone: string) => {
+      return run(async () => {
+        const res = await fetch("/api/auth/otp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "request", phone: nextPhone }),
+        });
+        const data = await readJson(res);
+        return {
+          sent: Boolean((data as { sent?: boolean }).sent ?? data.ok),
+          devCode: data.devCode,
+          warning: data.warning,
+        };
+      });
+    },
+    [run],
+  );
+
+  const verifyOtpCode = useCallback(
+    async (nextPhone: string, code: string) => {
+      await run(async () => {
+        const res = await fetch("/api/auth/otp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "verify", phone: nextPhone, code }),
+        });
+        await readJson(res);
+        await refresh();
+      });
+    },
+    [refresh, run],
+  );
+
+  const logout = useCallback(async () => {
+    await run(async () => {
+      const res = await fetch("/api/auth/logout", { method: "POST" });
+      await readJson(res);
+      setAuthenticated(false);
+      setNeedsSetup(false);
+      setPhone(null);
+      setState(defaultState);
+    });
+  }, [run]);
 
   const setLanguage = useCallback(
     async (language: Lang) => {
@@ -183,6 +253,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           body: JSON.stringify({ action: "create", name: businessName, language: state.language }),
         });
         const data = await readJson(res);
+        setAuthenticated(true);
+        setNeedsSetup(false);
         setState(toState(data.business));
       });
     },
@@ -195,9 +267,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const res = await fetch("/api/business", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "sample", name: businessName || "General Store", language: state.language }),
+          body: JSON.stringify({
+            action: "sample",
+            name: businessName || "General Store",
+            language: state.language,
+          }),
         });
         const data = await readJson(res);
+        setAuthenticated(true);
+        setNeedsSetup(false);
         setState(toState(data.business));
       });
     },
@@ -223,9 +301,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   );
 
   const addStaff = useCallback(
-    async (name: string, phone: string, permission: Permission) => {
+    async (name: string, phoneNumber: string, permission: Permission) => {
       await run(async () => {
-        const data = await stockAction({ action: "addStaff", name, phone, permission });
+        const data = await stockAction({ action: "addStaff", name, phone: phoneNumber, permission });
         setState(toState(data.business));
       });
     },
@@ -298,6 +376,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ action: "reset" }),
       });
       await readJson(res);
+      setAuthenticated(false);
+      setNeedsSetup(false);
+      setPhone(null);
       setState(defaultState);
     });
   }, [run]);
@@ -307,10 +388,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       ready,
       busy,
       error,
+      authenticated,
+      needsSetup,
+      phone,
       state,
       setLanguage,
       setBusinessName,
       setOwnerWhatsapp,
+      requestOtp,
+      verifyOtp: verifyOtpCode,
+      logout,
       startFresh,
       startSample,
       addProduct,
@@ -327,10 +414,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       ready,
       busy,
       error,
+      authenticated,
+      needsSetup,
+      phone,
       state,
       setLanguage,
       setBusinessName,
       setOwnerWhatsapp,
+      requestOtp,
+      verifyOtpCode,
+      logout,
       startFresh,
       startSample,
       addProduct,
