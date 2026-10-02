@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Menu } from "@/components/Menu";
 import { Button, Field, Lead, BackLabel } from "@/components/ui";
+import { VoiceInput } from "@/components/VoiceInput";
 import { t } from "@/lib/i18n";
 import { readPhoto } from "@/lib/photo";
 import { markScrollTop } from "@/lib/scroll";
@@ -71,10 +72,10 @@ export default function AddProductPage() {
         </div>
         <form className="card mt-6 space-y-5 p-5 sm:p-6" onSubmit={submit}>
           <Field id="name" label={t(lang, "productName")} error={errors.name}>
-            <input id="name" className="field" value={name} onChange={(e) => setName(e.target.value)} placeholder={t(lang, "productNamePlaceholder")} />
+            <VoiceInput id="name" lang={lang} value={name} onChange={setName} placeholder={t(lang, "productNamePlaceholder")} />
           </Field>
           <Field id="category" label={t(lang, "category")} error={errors.category}>
-            <input id="category" className="field" value={category} onChange={(e) => setCategory(e.target.value)} placeholder={t(lang, "categoryPlaceholder")} />
+            <VoiceInput id="category" lang={lang} value={category} onChange={setCategory} placeholder={t(lang, "categoryPlaceholder")} />
           </Field>
           <div>
             <p className="mb-1.5 text-sm font-medium text-navy/80" id="location-label">
@@ -93,13 +94,13 @@ export default function AddProductPage() {
             />
           </div>
           <Field id="quantity" label={t(lang, "quantity")} error={errors.quantity}>
-            <input id="quantity" className="field" inputMode="decimal" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+            <VoiceInput id="quantity" lang={lang} inputMode="decimal" value={quantity} onChange={setQuantity} />
           </Field>
           <Field id="price" label={t(lang, "purchasePrice")} error={errors.price}>
-            <input id="price" className="field" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0" />
+            <VoiceInput id="price" lang={lang} inputMode="decimal" value={price} onChange={setPrice} placeholder="0" />
           </Field>
           <Field id="variant" label={t(lang, "variant")} hint={t(lang, "variantHint")}>
-            <input id="variant" className="field" value={variant} onChange={(e) => setVariant(e.target.value)} placeholder={t(lang, "variantPlaceholder")} />
+            <VoiceInput id="variant" lang={lang} value={variant} onChange={setVariant} placeholder={t(lang, "variantPlaceholder")} />
           </Field>
 
           {!showPhoto ? (

@@ -53,4 +53,5 @@ export type AppState = {
   ownerWhatsapp: string | null;
   priceThreshold: number;
   alerts: AlertItem[];
+  isSample?: boolean;
 };

@@ -14,7 +14,7 @@ const links = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { state } = useStock();
+  const { state, error } = useStock();
   const lang = state.language;
 
   return (
@@ -55,6 +55,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
       <main id="page-top" className="mx-auto w-full max-w-[1040px] px-5 pb-24 pt-6 sm:px-8">
+        {state.isSample ? (
+          <div className="mb-4 rounded-xl border border-gold/40 bg-gold/15 px-4 py-3 text-sm text-navy" role="status">
+            {t(lang, "sampleBanner")}
+          </div>
+        ) : null}
+        {error ? (
+          <div className="mb-4 rounded-xl border border-clay/30 bg-clay/10 px-4 py-3 text-sm text-clay" role="alert">
+            <p className="font-semibold">{t(lang, "offlineBanner")}</p>
+            <p className="mt-1">{error}</p>
+          </div>
+        ) : null}
         {children}
       </main>
     </div>

@@ -2,8 +2,8 @@ import fs from "fs";
 import path from "path";
 import { getProduct, getRecentPurchasePrices } from "@/lib/db/queries";
 
-/** Build a simple SVG bar chart from real price history and save as a file Twilio can fetch. */
-export function writeWeeklyPriceChart(businessId: string, productId: string) {
+/** Build a simple SVG bar chart from real price history and save where Twilio can fetch it. */
+export async function writeWeeklyPriceChart(businessId: string, productId: string, appBaseUrl?: string) {
   const product = getProduct(businessId, productId);
   if (!product || product.priceHistory.length === 0) return null;
 
@@ -33,12 +33,34 @@ export function writeWeeklyPriceChart(businessId: string, productId: string) {
   ${bars}
 </svg>`;
 
-  const dir = path.join(process.cwd(), "public", "generated");
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const filename = `chart-${businessId.slice(0, 8)}-${productId.slice(0, 8)}.svg`;
-  const filePath = path.join(dir, filename);
-  fs.writeFileSync(filePath, svg, "utf8");
-  return `/generated/${filename}`;
+
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    try {
+      const { put } = await import("@vercel/blob");
+      const blob = await put(`stockpulse-charts/${filename}`, svg, {
+        access: "public",
+        addRandomSuffix: false,
+        allowOverwrite: true,
+        contentType: "image/svg+xml",
+        token: process.env.BLOB_READ_WRITE_TOKEN,
+      });
+      return blob.url;
+    } catch (err) {
+      console.error("[charts] blob upload failed", err);
+    }
+  }
+
+  const dir = path.join(process.cwd(), "public", "generated");
+  try {
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const filePath = path.join(dir, filename);
+    fs.writeFileSync(filePath, svg, "utf8");
+    return appBaseUrl ? `${appBaseUrl.replace(/\/$/, "")}/generated/${filename}` : `/generated/${filename}`;
+  } catch (err) {
+    console.error("[charts] local write failed", err);
+    return null;
+  }
 }
 
 export function biggestRecentMove(businessId: string, productIds: string[]) {

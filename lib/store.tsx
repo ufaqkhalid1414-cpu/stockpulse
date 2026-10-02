@@ -41,6 +41,7 @@ type ApiBusiness = AppState & {
   ownerWhatsapp?: string | null;
   priceThreshold?: number;
   alerts?: AlertItem[];
+  isSample?: boolean;
 };
 
 function toState(business: ApiBusiness | null | undefined): AppState {
@@ -56,11 +57,27 @@ function toState(business: ApiBusiness | null | undefined): AppState {
     ownerWhatsapp: business.ownerWhatsapp ?? null,
     priceThreshold: business.priceThreshold ?? 10,
     alerts: business.alerts ?? [],
+    isSample: Boolean(business.isSample),
   };
 }
 
+function networkMessage(err: unknown) {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return "You appear to be offline. Check your connection and try again.";
+  }
+  if (err instanceof TypeError) {
+    return "Could not reach the server. Check your connection and try again.";
+  }
+  return err instanceof Error ? err.message : "Something went wrong";
+}
+
 async function readJson(res: Response) {
-  const data = (await res.json()) as { business?: ApiBusiness | null; error?: string; alert?: AlertItem | null; preview?: string; sent?: unknown };
+  let data: { business?: ApiBusiness | null; error?: string; alert?: AlertItem | null; preview?: string; sent?: unknown };
+  try {
+    data = (await res.json()) as typeof data;
+  } catch {
+    throw new Error(res.ok ? "Unexpected response from server" : `Request failed (${res.status})`);
+  }
   if (!res.ok) throw new Error(data.error || "Request failed");
   return data;
 }
@@ -82,8 +99,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         await refresh();
-      } catch {
-        if (!cancelled) setState(defaultState);
+      } catch (err) {
+        if (!cancelled) {
+          setState(defaultState);
+          setError(networkMessage(err));
+        }
       } finally {
         if (!cancelled) setReady(true);
       }
@@ -99,7 +119,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     try {
       return await fn();
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Something went wrong";
+      const message = networkMessage(err);
       setError(message);
       throw err;
     } finally {
@@ -243,6 +263,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const sendDailyReport = useCallback(async () => {
     return run(async () => {
       const data = await stockAction({ action: "sendDailyReport" });
+      const sent = data.sent as { ok?: boolean; skipped?: boolean } | undefined;
+      if (sent?.skipped) {
+        throw new Error("WhatsApp is not configured yet — report was prepared but not sent.");
+      }
+      if (sent && sent.ok === false) {
+        throw new Error("WhatsApp could not send the report. Check the number and Twilio sandbox limits.");
+      }
       return { preview: data.preview || "", sent: data.sent };
     });
   }, [run, stockAction]);
@@ -250,7 +277,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const sendWeeklyChart = useCallback(
     async (productId?: string) => {
       await run(async () => {
-        await stockAction({ action: "sendWeeklyChart", productId });
+        const data = await stockAction({ action: "sendWeeklyChart", productId });
+        const sent = data.sent as { ok?: boolean; skipped?: boolean } | undefined;
+        if (sent?.skipped) {
+          throw new Error("WhatsApp is not configured yet — chart was prepared but not sent.");
+        }
+        if (sent && sent.ok === false) {
+          throw new Error("WhatsApp could not send the chart. Check the number and Twilio sandbox limits.");
+        }
       });
     },
     [run, stockAction],

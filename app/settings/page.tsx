@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { LanguageMenu } from "@/components/LanguageMenu";
 import { Button, CheckIcon, Field, Lead } from "@/components/ui";
+import { VoiceInput } from "@/components/VoiceInput";
 import { formatWhen } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import { markScrollTop } from "@/lib/scroll";
@@ -41,14 +42,14 @@ export default function SettingsPage() {
           <LanguageMenu align="start" />
         </div>
         <Field id="biz" label={t(lang, "businessName")}>
-          <input id="biz" className="field" value={name} onChange={(e) => setName(e.target.value)} />
+          <VoiceInput id="biz" lang={lang} value={name} onChange={setName} />
         </Field>
         <Field id="owner-wa" label={t(lang, "ownerWhatsapp")}>
-          <input
+          <VoiceInput
             id="owner-wa"
-            className="field"
+            lang={lang}
             value={whatsapp}
-            onChange={(e) => setWhatsapp(e.target.value)}
+            onChange={setWhatsapp}
             placeholder={t(lang, "whatsappPlaceholder")}
             dir="ltr"
           />

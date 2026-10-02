@@ -13,7 +13,7 @@ function authHeader() {
 export async function sendWhatsApp(to: string, body: string, mediaUrl?: string) {
   if (!twilioConfigured()) {
     console.warn("[twilio] missing credentials — message not sent:", body.slice(0, 120));
-    return { ok: false as const, skipped: true as const, sid: null };
+    return { ok: false as const, skipped: true as const, sid: null, error: "Twilio is not configured" };
   }
   const dest = to.startsWith("whatsapp:") ? to : `whatsapp:${to.replace(/\s/g, "")}`;
   const params = new URLSearchParams();
@@ -35,9 +35,9 @@ export async function sendWhatsApp(to: string, body: string, mediaUrl?: string) 
   );
   const json = (await res.json()) as { sid?: string; message?: string };
   if (!res.ok) {
-    throw new Error(json.message || `Twilio send failed (${res.status})`);
+    throw new Error(json.message || `WhatsApp send failed (${res.status}). Check the number and Twilio sandbox limits.`);
   }
-  return { ok: true as const, skipped: false as const, sid: json.sid ?? null };
+  return { ok: true as const, skipped: false as const, sid: json.sid ?? null, error: null };
 }
 
 export async function downloadTwilioMedia(url: string) {

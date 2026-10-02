@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { LanguageMenu } from "@/components/LanguageMenu";
 import { Button, Field } from "@/components/ui";
+import { VoiceInput } from "@/components/VoiceInput";
 import { t } from "@/lib/i18n";
 import { useStock } from "@/lib/store";
 
@@ -39,12 +40,12 @@ export default function SetupPage() {
 
       <div className="card mt-8 p-5 sm:p-6">
         <Field id="business" label={t(lang, "businessName")} error={error}>
-          <input
+          <VoiceInput
             id="business"
-            className="field"
+            lang={lang}
             value={name}
-            onChange={(event) => {
-              setName(event.target.value);
+            onChange={(next) => {
+              setName(next);
               if (error) setError("");
             }}
             placeholder={t(lang, "businessNamePlaceholder")}

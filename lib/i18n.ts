@@ -159,6 +159,12 @@ const en = {
   updatePurchasePrice: "Update purchase price",
   priceSaved: "Price updated",
   twilioMissing: "Twilio is not configured yet — message was prepared but not sent.",
+  voiceSpeak: "Speak to fill this field",
+  voiceListening: "Listening… tap to stop",
+  voiceUnsupported: "Voice input is not supported in this browser",
+  sampleBanner: "You're viewing sample data. When you add your first real product, the sample stock will be cleared.",
+  offlineBanner: "Connection problem",
+  whatsappSendFailed: "WhatsApp could not send. Check the number and that the phone joined the Twilio sandbox.",
 };
 
 export type CopyKey = keyof typeof en;
@@ -168,6 +174,9 @@ function pack(dict: Partial<{ [K in CopyKey]: string }>): { [K in CopyKey]: stri
 }
 
 const ur = pack({
+  voiceSpeak: "اس خانے کے لیے بولیں",
+  voiceListening: "سن رہا ہے… روکنے کے لیے دوبارہ دبائیں",
+  voiceUnsupported: "اس براؤزر میں آواز سے لکھنا دستیاب نہیں",
   setupTitle: "اپنا اسٹاک سادے الفاظ میں دیکھیں",
   setupBody: "StockPulse گودام اور دکان کا ایک پرسکون حساب رکھتا ہے۔",
   businessName: "کاروبار کا نام",

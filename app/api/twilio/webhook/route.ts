@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbReady } from "@/lib/db";
 import { findBusinessByWhatsapp } from "@/lib/db/queries";
 import { answerWhatsAppQuestion } from "@/lib/whatsapp-qa";
 import { downloadTwilioMedia, sendWhatsApp, transcribeAudio, twilioConfigured } from "@/lib/twilio";
@@ -6,6 +7,7 @@ import { downloadTwilioMedia, sendWhatsApp, transcribeAudio, twilioConfigured } 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  await ensureDbReady();
   const form = await request.formData();
   const from = String(form.get("From") || "");
   const body = String(form.get("Body") || "").trim();

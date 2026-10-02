@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Menu } from "@/components/Menu";
 import { Button, Field, Lead } from "@/components/ui";
+import { VoiceInput } from "@/components/VoiceInput";
 import { formatAdded } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import { useStock } from "@/lib/store";
@@ -60,12 +61,12 @@ export default function StaffPage() {
       {open && (
         <form className="card mt-6 space-y-4 p-5 sm:p-6" onSubmit={submit}>
           <Field id="staff-name" label={t(lang, "staffName")} error={error && !phone.trim() && !personName.trim() ? error : !personName.trim() && error === t(lang, "nameRequiredStaff") ? error : undefined}>
-            <input
+            <VoiceInput
               id="staff-name"
-              className="field"
+              lang={lang}
               value={personName}
-              onChange={(e) => {
-                setPersonName(e.target.value);
+              onChange={(next) => {
+                setPersonName(next);
                 if (error) setError("");
               }}
               placeholder={t(lang, "staffNamePlaceholder")}
@@ -74,12 +75,12 @@ export default function StaffPage() {
             />
           </Field>
           <Field id="phone" label={t(lang, "whatsapp")} error={error && error !== t(lang, "nameRequiredStaff") ? error : undefined}>
-            <input
+            <VoiceInput
               id="phone"
-              className="field"
+              lang={lang}
               value={phone}
-              onChange={(e) => {
-                setPhone(e.target.value);
+              onChange={(next) => {
+                setPhone(next);
                 if (error) setError("");
               }}
               placeholder={t(lang, "whatsappPlaceholder")}

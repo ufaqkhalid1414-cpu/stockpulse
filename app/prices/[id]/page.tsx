@@ -7,6 +7,7 @@ import { Menu } from "@/components/Menu";
 import { PriceBars } from "@/components/PriceBars";
 import { ProductPhoto } from "@/components/ProductPhoto";
 import { AppLink, BackLabel, Button, Field, Lead, Num } from "@/components/ui";
+import { VoiceInput } from "@/components/VoiceInput";
 import { formatMoney, formatPct } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import { currentPrice, priceDelta } from "@/lib/metrics";
@@ -105,7 +106,7 @@ export default function PriceHistoryPage() {
             />
           </div>
           <Field id="sale-qty" label={t(lang, "saleQty")}>
-            <input id="sale-qty" className="field" value={saleQty} onChange={(e) => setSaleQty(e.target.value)} inputMode="decimal" />
+            <VoiceInput id="sale-qty" lang={lang} value={saleQty} onChange={setSaleQty} inputMode="decimal" />
           </Field>
           <Button type="submit" disabled={busy}>
             {t(lang, "save")}
@@ -129,7 +130,7 @@ export default function PriceHistoryPage() {
         >
           <p className="font-semibold text-navy">{t(lang, "updatePurchasePrice")}</p>
           <Field id="new-price" label={t(lang, "purchasePrice")}>
-            <input id="new-price" className="field" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} inputMode="decimal" />
+            <VoiceInput id="new-price" lang={lang} value={newPrice} onChange={setNewPrice} inputMode="decimal" />
           </Field>
           <Button type="submit" disabled={busy}>
             {t(lang, "save")}

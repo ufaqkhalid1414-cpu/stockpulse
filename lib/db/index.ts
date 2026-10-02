@@ -12,8 +12,11 @@ function resolveDataDir() {
 const DATA_DIR = resolveDataDir();
 const DB_PATH = path.join(DATA_DIR, "stockpulse.sqlite");
 const BACKUP_DIR = path.join(DATA_DIR, "backups");
+const BLOB_PATHNAME = "stockpulse-data/stockpulse.sqlite";
 
 let db: DatabaseSync | null = null;
+let hydratePromise: Promise<void> | null = null;
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function getDb(): DatabaseSync {
   if (db) return db;
@@ -23,6 +26,64 @@ export function getDb(): DatabaseSync {
   db.exec("PRAGMA foreign_keys = ON;");
   migrate(db);
   return db;
+}
+
+/** Load durable SQLite from Vercel Blob (when configured) before serving requests. */
+export async function ensureDbReady() {
+  if (!hydratePromise) {
+    hydratePromise = (async () => {
+      if (process.env.VERCEL && process.env.BLOB_READ_WRITE_TOKEN && !fs.existsSync(DB_PATH)) {
+        try {
+          const { list } = await import("@vercel/blob");
+          const { blobs } = await list({ prefix: "stockpulse-data/", limit: 10 });
+          const match = blobs.find((b) => b.pathname === BLOB_PATHNAME) || blobs[0];
+          if (match?.url) {
+            const res = await fetch(match.url, {
+              headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}` },
+            });
+            if (res.ok) {
+              if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+              const buf = Buffer.from(await res.arrayBuffer());
+              fs.writeFileSync(DB_PATH, buf);
+            }
+          }
+        } catch (err) {
+          console.error("[db] blob hydrate failed", err);
+        }
+      }
+      getDb();
+    })();
+  }
+  await hydratePromise;
+  return getDb();
+}
+
+/** Persist SQLite to Vercel Blob so pilot data survives cold starts. */
+export async function persistDb() {
+  if (!process.env.VERCEL || !process.env.BLOB_READ_WRITE_TOKEN) return;
+  try {
+    const { put } = await import("@vercel/blob");
+    if (!fs.existsSync(DB_PATH)) return;
+    const buf = fs.readFileSync(DB_PATH);
+    await put(BLOB_PATHNAME, buf, {
+      access: "public",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      contentType: "application/x-sqlite3",
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    });
+  } catch (err) {
+    console.error("[db] blob persist failed", err);
+  }
+}
+
+/** Debounced persist after writes (many inserts in one request → one upload). */
+export function schedulePersistDb() {
+  if (!process.env.VERCEL || !process.env.BLOB_READ_WRITE_TOKEN) return;
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    void persistDb();
+  }, 50);
 }
 
 export function getBackupDir() {
@@ -43,7 +104,8 @@ function migrate(database: DatabaseSync) {
       price_threshold REAL NOT NULL DEFAULT 10,
       connected_stores INTEGER NOT NULL DEFAULT 0,
       last_backup TEXT,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      is_sample INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS products (
@@ -112,6 +174,12 @@ function migrate(database: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS idx_sales_business ON sales(business_id);
     CREATE INDEX IF NOT EXISTS idx_alerts_business ON alerts(business_id);
   `);
+
+  // Older DBs created before is_sample existed
+  const cols = database.prepare("PRAGMA table_info(businesses)").all() as { name: string }[];
+  if (!cols.some((c) => c.name === "is_sample")) {
+    database.exec("ALTER TABLE businesses ADD COLUMN is_sample INTEGER NOT NULL DEFAULT 0");
+  }
 }
 
 export function newId() {

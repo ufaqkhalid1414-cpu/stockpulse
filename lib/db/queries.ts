@@ -1,6 +1,6 @@
 import type { Lang } from "@/lib/i18n";
 import type { Location, Permission, PricePoint, Product, StaffMember } from "@/lib/types";
-import { getBackupDir, getDb, getDbPath, newId, nowIso } from "@/lib/db";
+import { getBackupDir, getDb, getDbPath, newId, nowIso, schedulePersistDb } from "@/lib/db";
 import fs from "fs";
 import path from "path";
 
@@ -13,6 +13,7 @@ export type BusinessRow = {
   connected_stores: number;
   last_backup: string | null;
   created_at: string;
+  is_sample: number;
 };
 
 export type AlertRow = {
@@ -49,7 +50,8 @@ function monthKey(iso: string) {
 
 export function getBusiness(id: string): BusinessRow | null {
   const row = getDb().prepare("SELECT * FROM businesses WHERE id = ?").get(id) as BusinessRow | undefined;
-  return row ?? null;
+  if (!row) return null;
+  return { ...row, is_sample: Number(row.is_sample ?? 0) };
 }
 
 export function listBusinesses(): BusinessRow[] {
@@ -66,12 +68,21 @@ export function createBusiness(input: {
   const created = nowIso();
   getDb()
     .prepare(
-      `INSERT INTO businesses (id, name, language, owner_whatsapp, price_threshold, connected_stores, last_backup, created_at)
-       VALUES (?, ?, ?, ?, 10, ?, NULL, ?)`,
+      `INSERT INTO businesses (id, name, language, owner_whatsapp, price_threshold, connected_stores, last_backup, created_at, is_sample)
+       VALUES (?, ?, ?, ?, 10, ?, NULL, ?, ?)`,
     )
-    .run(id, input.name.trim(), input.language ?? "en", input.ownerWhatsapp?.trim() || null, input.seedSample ? 2 : 0, created);
+    .run(
+      id,
+      input.name.trim(),
+      input.language ?? "en",
+      input.ownerWhatsapp?.trim() || null,
+      input.seedSample ? 2 : 0,
+      created,
+      input.seedSample ? 1 : 0,
+    );
 
   if (input.seedSample) seedSampleProducts(id);
+  schedulePersistDb();
   return getBusiness(id)!;
 }
 
@@ -102,11 +113,27 @@ export function updateBusiness(
       patch.lastBackup === undefined ? current.last_backup : patch.lastBackup,
       id,
     );
+  schedulePersistDb();
   return getBusiness(id)!;
+}
+
+/** Remove demo products/staff so real inventory never mixes with sample stock. */
+export function clearSampleInventory(businessId: string) {
+  const business = getBusiness(businessId);
+  if (!business || !business.is_sample) return false;
+  getDb().prepare("DELETE FROM sales WHERE business_id = ?").run(businessId);
+  getDb().prepare("DELETE FROM alerts WHERE business_id = ?").run(businessId);
+  getDb().prepare("DELETE FROM price_history WHERE business_id = ?").run(businessId);
+  getDb().prepare("DELETE FROM products WHERE business_id = ?").run(businessId);
+  getDb().prepare("DELETE FROM staff WHERE business_id = ?").run(businessId);
+  getDb().prepare("UPDATE businesses SET is_sample = 0, connected_stores = 0 WHERE id = ?").run(businessId);
+  schedulePersistDb();
+  return true;
 }
 
 export function deleteBusiness(id: string) {
   getDb().prepare("DELETE FROM businesses WHERE id = ?").run(id);
+  schedulePersistDb();
 }
 
 export function getPriceHistory(productId: string, businessId: string): PricePoint[] {
@@ -161,6 +188,8 @@ export function addProduct(
     photo?: string;
   },
 ): Product {
+  clearSampleInventory(businessId);
+
   const id = newId();
   const created = nowIso();
   const warehouse = input.location === "warehouse" ? input.quantity : 0;
@@ -193,6 +222,7 @@ export function addProduct(
     .prepare(`INSERT INTO price_history (id, product_id, business_id, price, recorded_at) VALUES (?, ?, ?, ?, ?)`)
     .run(newId(), id, businessId, input.purchasePrice, created);
 
+  schedulePersistDb();
   return getProduct(businessId, id)!;
 }
 
@@ -229,6 +259,7 @@ export function recordPurchasePrice(
     }
   }
 
+  schedulePersistDb();
   return { product: getProduct(businessId, productId)!, alert };
 }
 
@@ -263,6 +294,7 @@ export function recordSale(
     )
     .run(newId(), businessId, input.productId, input.location, input.quantity, product.purchasePrice, nowIso());
 
+  schedulePersistDb();
   return getProduct(businessId, input.productId)!;
 }
 
@@ -295,6 +327,7 @@ export function addStaff(
     .prepare(`INSERT INTO staff (id, business_id, name, phone, permission, added_at) VALUES (?, ?, ?, ?, ?, ?)`)
     .run(id, businessId, name, phone, input.permission, addedAt);
 
+  schedulePersistDb();
   return { id, name, phone, permission: input.permission, addedAt };
 }
 
@@ -446,5 +479,6 @@ export function buildBusinessState(businessId: string) {
     ownerWhatsapp: business.owner_whatsapp,
     priceThreshold: business.price_threshold,
     alerts: getAlerts(businessId, 10),
+    isSample: Boolean(business.is_sample),
   };
 }

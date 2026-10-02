@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbReady, persistDb } from "@/lib/db";
 import { requireBusiness } from "@/lib/session";
 import {
   addProduct,
@@ -25,12 +26,14 @@ function baseUrl(request: Request) {
 }
 
 export async function GET() {
+  await ensureDbReady();
   const business = await requireBusiness();
   if (!business) return NextResponse.json({ error: "No business selected" }, { status: 401 });
   return NextResponse.json({ business: buildBusinessState(business.id) });
 }
 
 export async function PATCH(request: Request) {
+  await ensureDbReady();
   const business = await requireBusiness();
   if (!business) return NextResponse.json({ error: "No business selected" }, { status: 401 });
   const body = (await request.json()) as {
@@ -45,10 +48,12 @@ export async function PATCH(request: Request) {
     ownerWhatsapp: body.ownerWhatsapp,
     priceThreshold: body.priceThreshold,
   });
+  await persistDb();
   return NextResponse.json({ business: buildBusinessState(business.id) });
 }
 
 export async function POST(request: Request) {
+  await ensureDbReady();
   const business = await requireBusiness();
   if (!business) return NextResponse.json({ error: "No business selected" }, { status: 401 });
   const body = (await request.json()) as Record<string, unknown>;
@@ -65,6 +70,7 @@ export async function POST(request: Request) {
         purchasePrice: Number(body.purchasePrice),
         photo: body.photo ? String(body.photo) : undefined,
       });
+      await persistDb();
       return NextResponse.json({ product, business: buildBusinessState(business.id) });
     }
 
@@ -74,6 +80,7 @@ export async function POST(request: Request) {
         phone: String(body.phone || ""),
         permission: (body.permission as Permission) || "view",
       });
+      await persistDb();
       return NextResponse.json({ staff, business: buildBusinessState(business.id) });
     }
 
@@ -83,6 +90,7 @@ export async function POST(request: Request) {
         location: body.location as Location,
         quantity: Number(body.quantity),
       });
+      await persistDb();
       return NextResponse.json({ product, business: buildBusinessState(business.id) });
     }
 
@@ -92,20 +100,31 @@ export async function POST(request: Request) {
         String(body.productId || ""),
         Number(body.price),
       );
+      let whatsappError: string | null = null;
       if (alert && business.owner_whatsapp) {
-        const msg = `${alert.title}\n${alert.body}`;
-        await sendWhatsApp(business.owner_whatsapp, msg).catch((err) => console.error(err));
+        try {
+          const sent = await sendWhatsApp(business.owner_whatsapp, `${alert.title}\n${alert.body}`);
+          if (sent.skipped) {
+            whatsappError = "Price saved. WhatsApp alert was not sent — Twilio is not configured.";
+          }
+        } catch (err) {
+          whatsappError =
+            err instanceof Error ? err.message : "Price saved, but WhatsApp alert failed to send.";
+        }
       }
+      await persistDb();
       return NextResponse.json({
         product,
         alert,
         business: buildBusinessState(business.id),
         twilioConfigured: twilioConfigured(),
+        whatsappError,
       });
     }
 
     if (action === "backup") {
       const result = runBackup(business.id);
+      await persistDb();
       return NextResponse.json({ backup: result, business: buildBusinessState(business.id) });
     }
 
@@ -149,11 +168,11 @@ export async function POST(request: Request) {
     if (action === "sendWeeklyChart") {
       const productId = String(body.productId || "") || buildBusinessState(business.id)?.products[0]?.id || "";
       if (!productId) return NextResponse.json({ error: "No product for chart" }, { status: 400 });
-      const relative = writeWeeklyPriceChart(business.id, productId);
+      const relative = await writeWeeklyPriceChart(business.id, productId, baseUrl(request));
       if (!relative) return NextResponse.json({ error: "No price history" }, { status: 400 });
       const to = business.owner_whatsapp || String(body.to || "");
       if (!to) return NextResponse.json({ error: "Set an owner WhatsApp number first" }, { status: 400 });
-      const media = `${baseUrl(request)}${relative}`;
+      const media = relative.startsWith("http") ? relative : `${baseUrl(request)}${relative}`;
       const sent = await sendWhatsApp(to, "Weekly price comparison", media);
       return NextResponse.json({ sent, media, twilioConfigured: twilioConfigured() });
     }
