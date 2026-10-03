@@ -17,7 +17,7 @@ export default function SettingsPage() {
     setBusinessName,
     runBackup,
     sendDailyReport,
-    sendWeeklyChart,
+    sendMonthlyChart,
     reset,
     logout,
     busy,
@@ -133,14 +133,14 @@ export default function SettingsPage() {
           disabled={busy}
           onClick={async () => {
             try {
-              await sendWeeklyChart();
+              await sendMonthlyChart();
               setNotice(t(lang, "chartSent"));
             } catch {
               /* error shown below */
             }
           }}
         >
-          {t(lang, "sendWeeklyChart")}
+          {t(lang, "sendMonthlyChart")}
         </Button>
         {notice ? <p className="text-sm font-medium text-pine">{notice}</p> : null}
         {reportPreview ? (

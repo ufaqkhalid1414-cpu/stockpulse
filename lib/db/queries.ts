@@ -221,6 +221,55 @@ export function getRecentPurchasePrices(productId: string, businessId: string, l
   return rows.map((r) => r.price).reverse();
 }
 
+export type MonthlyPricePoint = {
+  /** YYYY-MM */
+  key: string;
+  label: string;
+  /** Average of purchases recorded in that calendar month */
+  price: number;
+  count: number;
+};
+
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** Average purchase price per calendar month from actual price_history rows. */
+export function getMonthlyPurchasePrices(
+  productId: string,
+  businessId: string,
+  months = 6,
+): MonthlyPricePoint[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT price, recorded_at FROM price_history
+       WHERE product_id = ? AND business_id = ?
+       ORDER BY recorded_at ASC`,
+    )
+    .all(productId, businessId) as { price: number; recorded_at: string }[];
+
+  const buckets = new Map<string, { sum: number; count: number; year: number; month: number }>();
+  for (const row of rows) {
+    const d = new Date(row.recorded_at);
+    if (Number.isNaN(d.getTime())) continue;
+    const year = d.getUTCFullYear();
+    const month = d.getUTCMonth();
+    const key = `${year}-${String(month + 1).padStart(2, "0")}`;
+    const current = buckets.get(key) || { sum: 0, count: 0, year, month };
+    current.sum += row.price;
+    current.count += 1;
+    buckets.set(key, current);
+  }
+
+  return [...buckets.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-Math.max(1, months))
+    .map(([key, value]) => ({
+      key,
+      label: MONTH_LABELS[value.month],
+      price: value.sum / value.count,
+      count: value.count,
+    }));
+}
+
 export function getProducts(businessId: string): Product[] {
   const rows = getDb()
     .prepare("SELECT * FROM products WHERE business_id = ? ORDER BY created_at DESC")

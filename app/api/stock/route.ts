@@ -23,7 +23,7 @@ import {
   updateBusiness,
 } from "@/lib/db/queries";
 import { sendWhatsApp, twilioConfigured } from "@/lib/twilio";
-import { biggestRecentMove, writeWeeklyPriceChart } from "@/lib/charts";
+import { biggestRecentMove, writeMonthlyPriceChart } from "@/lib/charts";
 import { totalQty } from "@/lib/metrics";
 import type { Lang } from "@/lib/i18n";
 import type { Location, OwnerAccess, Permission } from "@/lib/types";
@@ -230,11 +230,12 @@ export async function POST(request: Request) {
       });
     }
 
-    if (action === "sendWeeklyChart") {
+    if (action === "sendMonthlyChart" || action === "sendWeeklyChart") {
+      // sendWeeklyChart kept as alias for older clients; chart is monthly
       if (!canSendReports(ctx.role)) return forbidden();
       const productId = String(body.productId || "") || buildBusinessState(ctx.business.id)?.products[0]?.id || "";
       if (!productId) return NextResponse.json({ error: "No product for chart" }, { status: 400 });
-      const relative = await writeWeeklyPriceChart(ctx.business.id, productId, baseUrl(request));
+      const relative = await writeMonthlyPriceChart(ctx.business.id, productId, baseUrl(request));
       if (!relative) return NextResponse.json({ error: "No price history" }, { status: 400 });
       const ownerPhones = getOwnerPhones(ctx.business.id);
       if (ownerPhones.length === 0) {
@@ -243,7 +244,7 @@ export async function POST(request: Request) {
       const media = relative.startsWith("http") ? relative : `${baseUrl(request)}${relative}`;
       const results = [];
       for (const to of ownerPhones) {
-        results.push(await sendWhatsApp(to, "Weekly price comparison", media));
+        results.push(await sendWhatsApp(to, "Monthly price comparison", media));
       }
       return NextResponse.json({
         sent: results[0],

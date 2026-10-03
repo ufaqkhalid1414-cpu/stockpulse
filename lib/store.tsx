@@ -39,6 +39,8 @@ type StoreValue = {
   recordPurchasePrice: (productId: string, price: number) => Promise<{ alert: AlertItem | null }>;
   runBackup: () => Promise<void>;
   sendDailyReport: () => Promise<{ preview: string; sent: unknown }>;
+  sendMonthlyChart: (productId?: string) => Promise<void>;
+  /** @deprecated use sendMonthlyChart */
   sendWeeklyChart: (productId?: string) => Promise<void>;
   reset: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -391,10 +393,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     });
   }, [run, stockAction]);
 
-  const sendWeeklyChart = useCallback(
+  const sendMonthlyChart = useCallback(
     async (productId?: string) => {
       await run(async () => {
-        const data = await stockAction({ action: "sendWeeklyChart", productId });
+        const data = await stockAction({ action: "sendMonthlyChart", productId });
         const sent = data.sent as { ok?: boolean; skipped?: boolean } | undefined;
         if (sent?.skipped) {
           throw new Error("WhatsApp is not configured yet — chart was prepared but not sent.");
@@ -451,7 +453,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       recordPurchasePrice,
       runBackup,
       sendDailyReport,
-      sendWeeklyChart,
+      sendMonthlyChart,
+      sendWeeklyChart: sendMonthlyChart,
       reset,
       refresh,
     }),
@@ -481,7 +484,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       recordPurchasePrice,
       runBackup,
       sendDailyReport,
-      sendWeeklyChart,
+      sendMonthlyChart,
       reset,
       refresh,
     ],
