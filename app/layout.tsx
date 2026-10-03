@@ -15,7 +15,8 @@ export const metadata: Metadata = {
     default: "StockPulse",
     template: "%s · StockPulse",
   },
-  description: "A calm inventory dashboard for shop owners who sell in more than one place.",
+  description:
+    "StockPulse — calm inventory for shop owners across warehouse, shop, and online. WhatsApp login, daily reports, and price alerts.",
 };
 
 export const viewport: Viewport = {
