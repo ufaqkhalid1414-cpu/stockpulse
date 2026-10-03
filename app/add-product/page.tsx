@@ -13,9 +13,10 @@ import { useStock } from "@/lib/store";
 import type { Location } from "@/lib/types";
 
 export default function AddProductPage() {
-  const { state, addProduct } = useStock();
+  const { state, addProduct, role, homePath } = useStock();
   const lang = state.language;
   const router = useRouter();
+  const isStaff = role === "staff_add" || role === "staff_view";
   const fileRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
@@ -48,7 +49,7 @@ export default function AddProductPage() {
       photo,
     }).then(() => {
       markScrollTop();
-      router.push("/dashboard", { scroll: false });
+      router.push(isStaff ? "/add-product" : "/dashboard", { scroll: false });
     });
   }
 
@@ -66,8 +67,8 @@ export default function AddProductPage() {
   return (
     <AppShell>
       <div className="max-w-lg">
-        <BackLabel label={t(lang, "back")} fallback="/dashboard" />
-        <div className="mt-6">
+        {!isStaff ? <BackLabel label={t(lang, "back")} fallback={homePath || "/dashboard"} /> : null}
+        <div className={isStaff ? "" : "mt-6"}>
           <Lead title={t(lang, "addTitle")} support={t(lang, "addSupport")} />
         </div>
         <form className="card mt-6 space-y-5 p-5 sm:p-6" onSubmit={submit}>

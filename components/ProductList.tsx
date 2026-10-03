@@ -13,13 +13,16 @@ export function ProductRows({
   products,
   emptyTitle,
   emptySupport,
+  readOnly = false,
 }: {
   products: Product[];
   emptyTitle: string;
   emptySupport: string;
+  readOnly?: boolean;
 }) {
-  const { state } = useStock();
+  const { state, role } = useStock();
   const lang = state.language;
+  const linkToPrices = !readOnly && (role === "equal_owner" || role === "co_owner");
 
   if (products.length === 0) {
     return (
@@ -32,42 +35,51 @@ export function ProductRows({
 
   return (
     <ul className="mt-6 space-y-3">
-      {products.map((product) => (
-        <li key={product.id}>
-          <AppLink href={`/prices/${product.id}`} className="card lift block p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex min-w-0 items-start gap-3">
-                <ProductPhoto src={product.photo} name={product.name} />
-                <div className="min-w-0">
-                  <p className="font-semibold text-navy">{product.name}</p>
-                  <p className="mt-1 text-sm text-navy/60">
-                    {product.category}
-                    {product.variant ? ` · ${product.variant}` : ""}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {product.warehouseQty > 0 ? (
-                      <span className="rounded-full bg-cream px-3 py-1 text-xs font-semibold text-navy">
-                        {t(lang, "badgeWarehouse", { count: formatQty(product.warehouseQty) })}
-                      </span>
-                    ) : null}
-                    {product.shopQty > 0 ? (
-                      <span className="rounded-full bg-cream px-3 py-1 text-xs font-semibold text-navy">
-                        {t(lang, "badgeShop", { count: formatQty(product.shopQty) })}
-                      </span>
-                    ) : null}
-                    {(product.onlineQty ?? 0) > 0 ? (
-                      <span className="rounded-full bg-cream px-3 py-1 text-xs font-semibold text-navy">
-                        {t(lang, "badgeOnline", { count: formatQty(product.onlineQty) })}
-                      </span>
-                    ) : null}
-                  </div>
+      {products.map((product) => {
+        const body = (
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex min-w-0 items-start gap-3">
+              <ProductPhoto src={product.photo} name={product.name} />
+              <div className="min-w-0">
+                <p className="font-semibold text-navy">{product.name}</p>
+                <p className="mt-1 text-sm text-navy/60">
+                  {product.category}
+                  {product.variant ? ` · ${product.variant}` : ""}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {product.warehouseQty > 0 ? (
+                    <span className="rounded-full bg-cream px-3 py-1 text-xs font-semibold text-navy">
+                      {t(lang, "badgeWarehouse", { count: formatQty(product.warehouseQty) })}
+                    </span>
+                  ) : null}
+                  {product.shopQty > 0 ? (
+                    <span className="rounded-full bg-cream px-3 py-1 text-xs font-semibold text-navy">
+                      {t(lang, "badgeShop", { count: formatQty(product.shopQty) })}
+                    </span>
+                  ) : null}
+                  {(product.onlineQty ?? 0) > 0 ? (
+                    <span className="rounded-full bg-cream px-3 py-1 text-xs font-semibold text-navy">
+                      {t(lang, "badgeOnline", { count: formatQty(product.onlineQty) })}
+                    </span>
+                  ) : null}
                 </div>
               </div>
-              <Num className="text-3xl font-bold tracking-tight text-navy">{formatQty(totalQty(product))}</Num>
             </div>
-          </AppLink>
-        </li>
-      ))}
+            <Num className="text-3xl font-bold tracking-tight text-navy">{formatQty(totalQty(product))}</Num>
+          </div>
+        );
+        return (
+          <li key={product.id}>
+            {linkToPrices ? (
+              <AppLink href={`/prices/${product.id}`} className="card lift block p-5">
+                {body}
+              </AppLink>
+            ) : (
+              <div className="card p-5">{body}</div>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -87,15 +99,21 @@ export function ListScreen({
   emptyTitle: string;
   emptySupport: string;
 }) {
-  const { state } = useStock();
+  const { state, role, homePath } = useStock();
+  const isStaff = role === "staff_add" || role === "staff_view";
   return (
     <AppShell>
-      <BackLabel label={t(state.language, "back")} fallback="/dashboard" />
-      <div className="mt-6">
+      {!isStaff ? <BackLabel label={t(state.language, "back")} fallback={homePath || "/dashboard"} /> : null}
+      <div className={isStaff ? "" : "mt-6"}>
         <Lead title={title} support={support} />
       </div>
       <h2 className="mt-8 text-lg font-bold text-navy">{header}</h2>
-      <ProductRows products={products} emptyTitle={emptyTitle} emptySupport={emptySupport} />
+      <ProductRows
+        products={products}
+        emptyTitle={emptyTitle}
+        emptySupport={emptySupport}
+        readOnly={isStaff}
+      />
     </AppShell>
   );
 }

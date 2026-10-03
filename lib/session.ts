@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomInt } from "crypto";
 import { cookies } from "next/headers";
 import { getDb, newId, nowIso, schedulePersistDb } from "@/lib/db";
-import { findBusinessByWhatsapp, getBusiness, type BusinessRow } from "@/lib/db/queries";
+import { ensureOwnersTable, findMembershipByPhone, getBusiness, type BusinessRow } from "@/lib/db/queries";
 import { normalizePhone } from "@/lib/phone";
 
 export const SESSION_COOKIE = "stockpulse_session";
@@ -51,6 +51,7 @@ export function ensureAuthTables() {
     CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash);
     CREATE INDEX IF NOT EXISTS idx_sessions_phone ON sessions(phone);
   `);
+  ensureOwnersTable();
 }
 
 export function generateOtpCode() {
@@ -138,7 +139,6 @@ export async function createSession(phone: string, businessId: string | null) {
     secure: cookieSecure(),
     maxAge: SESSION_DAYS * 24 * 60 * 60,
   });
-  // Clear legacy insecure cookie
   jar.delete(BUSINESS_COOKIE);
   return { id, token, expiresAt: expires };
 }
@@ -188,25 +188,25 @@ export async function attachBusinessToSession(businessId: string) {
   return { ...session, businessId };
 }
 
-/** Authenticated owner session required. */
 export async function requireSession(): Promise<AuthSession | null> {
   return getSession();
 }
 
-/** Authenticated session with an attached business — protects inventory APIs. */
+/** Any logged-in member of the business (owner or staff). */
 export async function requireBusiness(): Promise<BusinessRow | null> {
   const session = await getSession();
   if (!session?.businessId) return null;
   const business = getBusiness(session.businessId);
   if (!business) return null;
-  // Ensure session phone matches owner (prevents stale sessions on wrong account)
-  const owner = (business.owner_whatsapp || "").replace(/\s/g, "").replace(/^whatsapp:/i, "");
-  if (owner && owner !== session.phone) return null;
+  const membership = findMembershipByPhone(session.phone);
+  if (!membership || membership.businessId !== business.id) return null;
   return business;
 }
 
 export function resolveBusinessForPhone(phone: string) {
-  return findBusinessByWhatsapp(normalizePhone(phone));
+  const membership = findMembershipByPhone(normalizePhone(phone));
+  if (!membership) return null;
+  return getBusiness(membership.businessId);
 }
 
 export function otpDevModeEnabled() {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+import { canResetBusiness, homePathForRole, requireAccess } from "@/lib/access";
 import { ensureDbReady, persistDb } from "@/lib/db";
-import { buildBusinessState, createBusiness, deleteBusiness } from "@/lib/db/queries";
+import { buildBusinessState, createBusiness, deleteBusiness, findMembershipByPhone } from "@/lib/db/queries";
 import {
   attachBusinessToSession,
   destroySession,
@@ -20,6 +21,8 @@ export async function GET() {
         authenticated: false,
         needsSetup: false,
         phone: null,
+        role: null,
+        homePath: "/",
         business: null,
       });
     }
@@ -28,16 +31,30 @@ export async function GET() {
         authenticated: true,
         needsSetup: true,
         phone: session.phone,
+        role: null,
+        homePath: "/",
+        business: null,
+      });
+    }
+    const membership = findMembershipByPhone(session.phone);
+    if (!membership || membership.businessId !== session.businessId) {
+      return NextResponse.json({
+        authenticated: true,
+        needsSetup: true,
+        phone: session.phone,
+        role: null,
+        homePath: "/",
         business: null,
       });
     }
     const state = buildBusinessState(session.businessId);
     if (!state) {
-      // Stale session business — keep phone auth, force setup
       return NextResponse.json({
         authenticated: true,
         needsSetup: true,
         phone: session.phone,
+        role: null,
+        homePath: "/",
         business: null,
       });
     }
@@ -45,6 +62,8 @@ export async function GET() {
       authenticated: true,
       needsSetup: false,
       phone: session.phone,
+      role: membership.role,
+      homePath: homePathForRole(membership.role),
       business: state,
     });
   } catch (err) {
@@ -75,17 +94,24 @@ export async function POST(request: Request) {
     };
 
     if (body.action === "reset") {
-      if (session.businessId) deleteBusiness(session.businessId);
+      const ctx = await requireAccess();
+      if (!ctx || !canResetBusiness(ctx.role)) {
+        return NextResponse.json(
+          { error: "Only equal owners can delete the business account" },
+          { status: 403 },
+        );
+      }
+      deleteBusiness(ctx.business.id);
       await destroySession();
       await persistDb();
       return NextResponse.json({ authenticated: false, business: null });
     }
 
-    // Creating a business requires verified phone; only when no business yet
+    // Staff/owners already on a business cannot create another
     if (session.businessId) {
-      const existing = buildBusinessState(session.businessId);
-      if (existing) {
-        return NextResponse.json({ error: "You already have a business on this login" }, { status: 409 });
+      const membership = findMembershipByPhone(session.phone);
+      if (membership) {
+        return NextResponse.json({ error: "You already have an account on this login" }, { status: 409 });
       }
     }
 
@@ -106,6 +132,8 @@ export async function POST(request: Request) {
       authenticated: true,
       needsSetup: false,
       phone: session.phone,
+      role: "equal_owner",
+      homePath: "/dashboard",
       business: buildBusinessState(created.id),
     });
   } catch (err) {

@@ -23,8 +23,10 @@ export default function SettingsPage() {
     busy,
     error,
     phone,
+    role,
   } = useStock();
   const lang = state.language;
+  const canReset = role === "equal_owner";
   const router = useRouter();
   const [name, setName] = useState(state.businessName);
   const [saved, setSaved] = useState(false);
@@ -150,23 +152,27 @@ export default function SettingsPage() {
         {error ? <p className="text-sm font-medium text-clay">{error}</p> : null}
       </div>
 
-      <div className="mt-8">
-        <Button
-          variant="secondary"
-          disabled={busy}
-          onClick={async () => {
-            if (!confirmReset) {
-              setConfirmReset(true);
-              return;
-            }
-            await reset();
-            markScrollTop();
-            router.push("/", { scroll: false });
-          }}
-        >
-          {confirmReset ? t(lang, "resetConfirm") : t(lang, "resetDemo")}
-        </Button>
-      </div>
+      {canReset ? (
+        <div className="mt-8">
+          <Button
+            variant="secondary"
+            disabled={busy}
+            onClick={async () => {
+              if (!confirmReset) {
+                setConfirmReset(true);
+                return;
+              }
+              await reset();
+              markScrollTop();
+              router.push("/", { scroll: false });
+            }}
+          >
+            {confirmReset ? t(lang, "resetConfirm") : t(lang, "resetDemo")}
+          </Button>
+        </div>
+      ) : role === "co_owner" ? (
+        <p className="mt-8 text-sm text-navy/55">{t(lang, "coOwnerBlocked")}</p>
+      ) : null}
     </AppShell>
   );
 }

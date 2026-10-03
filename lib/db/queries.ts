@@ -1,6 +1,7 @@
 import type { Lang } from "@/lib/i18n";
-import type { Location, Permission, PricePoint, Product, StaffMember } from "@/lib/types";
+import type { AccessRole, BusinessOwner, Location, OwnerAccess, Permission, PricePoint, Product, StaffMember } from "@/lib/types";
 import { getBackupDir, getDb, getDbPath, newId, nowIso, schedulePersistDb } from "@/lib/db";
+import { normalizePhone } from "@/lib/phone";
 import fs from "fs";
 import path from "path";
 
@@ -16,6 +17,13 @@ export type BusinessRow = {
   is_sample: number;
 };
 
+export type Membership = {
+  businessId: string;
+  role: AccessRole;
+  name: string;
+  phone: string;
+};
+
 export type AlertRow = {
   id: string;
   business_id: string;
@@ -26,6 +34,48 @@ export type AlertRow = {
   created_at: string;
   seen: number;
 };
+
+let ownersReady = false;
+
+export function ensureOwnersTable() {
+  if (ownersReady) return;
+  getDb().exec(`
+    CREATE TABLE IF NOT EXISTS business_owners (
+      id TEXT PRIMARY KEY,
+      business_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      access_type TEXT NOT NULL DEFAULT 'equal',
+      is_primary INTEGER NOT NULL DEFAULT 0,
+      added_at TEXT NOT NULL,
+      FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_owners_business ON business_owners(business_id);
+    CREATE INDEX IF NOT EXISTS idx_owners_phone ON business_owners(phone);
+  `);
+
+  // Migrate legacy primary owner_whatsapp into business_owners
+  const businesses = getDb().prepare("SELECT id, owner_whatsapp, created_at FROM businesses").all() as {
+    id: string;
+    owner_whatsapp: string | null;
+    created_at: string;
+  }[];
+  for (const biz of businesses) {
+    if (!biz.owner_whatsapp) continue;
+    const phone = normalizePhone(biz.owner_whatsapp);
+    const count = getDb()
+      .prepare("SELECT COUNT(*) as c FROM business_owners WHERE business_id = ?")
+      .get(biz.id) as { c: number };
+    if (Number(count.c) > 0) continue;
+    getDb()
+      .prepare(
+        `INSERT INTO business_owners (id, business_id, name, phone, access_type, is_primary, added_at)
+         VALUES (?, ?, ?, ?, 'equal', 1, ?)`,
+      )
+      .run(newId(), biz.id, "Owner", phone, biz.created_at || nowIso());
+  }
+  ownersReady = true;
+}
 
 function mapProduct(row: Record<string, unknown>, history: PricePoint[]): Product {
   return {
@@ -82,6 +132,16 @@ export function createBusiness(input: {
     );
 
   if (input.seedSample) seedSampleProducts(id);
+  if (input.ownerWhatsapp) {
+    ensureOwnersTable();
+    const phone = normalizePhone(input.ownerWhatsapp);
+    getDb()
+      .prepare(
+        `INSERT INTO business_owners (id, business_id, name, phone, access_type, is_primary, added_at)
+         VALUES (?, ?, ?, ?, 'equal', 1, ?)`,
+      )
+      .run(newId(), id, "Owner", phone, created);
+  }
   schedulePersistDb();
   return getBusiness(id)!;
 }
@@ -298,6 +358,134 @@ export function recordSale(
   return getProduct(businessId, input.productId)!;
 }
 
+export function getOwners(businessId: string): BusinessOwner[] {
+  ensureOwnersTable();
+  const rows = getDb()
+    .prepare("SELECT * FROM business_owners WHERE business_id = ? ORDER BY is_primary DESC, added_at ASC")
+    .all(businessId) as {
+    id: string;
+    name: string;
+    phone: string;
+    access_type: string;
+    is_primary: number;
+    added_at: string;
+  }[];
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    phone: row.phone,
+    access: row.access_type === "co" ? "co" : "equal",
+    isPrimary: Boolean(row.is_primary),
+    addedAt: row.added_at,
+  }));
+}
+
+export function getOwnerPhones(businessId: string): string[] {
+  const phones = new Set<string>();
+  for (const owner of getOwners(businessId)) phones.add(normalizePhone(owner.phone));
+  const business = getBusiness(businessId);
+  if (business?.owner_whatsapp) phones.add(normalizePhone(business.owner_whatsapp));
+  return [...phones].filter(Boolean);
+}
+
+export function addOwner(
+  businessId: string,
+  input: { name: string; phone: string; access: OwnerAccess },
+): BusinessOwner {
+  ensureOwnersTable();
+  const name = input.name.trim();
+  const phone = normalizePhone(input.phone);
+  if (!name) throw new Error("Name is required");
+  if (!phone) throw new Error("WhatsApp number is required");
+
+  const existingMember = findMembershipByPhone(phone);
+  if (existingMember) throw new Error("That WhatsApp number is already on an account");
+
+  const id = newId();
+  const addedAt = nowIso();
+  getDb()
+    .prepare(
+      `INSERT INTO business_owners (id, business_id, name, phone, access_type, is_primary, added_at)
+       VALUES (?, ?, ?, ?, ?, 0, ?)`,
+    )
+    .run(id, businessId, name, phone, input.access === "co" ? "co" : "equal", addedAt);
+  schedulePersistDb();
+  return { id, name, phone, access: input.access === "co" ? "co" : "equal", isPrimary: false, addedAt };
+}
+
+export function removeOwner(businessId: string, ownerId: string) {
+  ensureOwnersTable();
+  const owners = getOwners(businessId);
+  const target = owners.find((o) => o.id === ownerId);
+  if (!target) throw new Error("Owner not found");
+  if (target.isPrimary) throw new Error("Cannot remove the primary owner");
+  const equalLeft = owners.filter((o) => o.access === "equal" && o.id !== ownerId);
+  if (target.access === "equal" && equalLeft.length === 0) {
+    throw new Error("Keep at least one equal owner");
+  }
+  getDb().prepare("DELETE FROM business_owners WHERE id = ? AND business_id = ?").run(ownerId, businessId);
+  schedulePersistDb();
+}
+
+export function findMembershipByPhone(phone: string): Membership | null {
+  ensureOwnersTable();
+  const normalized = normalizePhone(phone);
+
+  const owner = getDb()
+    .prepare("SELECT * FROM business_owners WHERE phone = ? LIMIT 1")
+    .get(normalized) as
+    | { business_id: string; name: string; phone: string; access_type: string }
+    | undefined;
+  if (owner) {
+    return {
+      businessId: owner.business_id,
+      role: owner.access_type === "co" ? "co_owner" : "equal_owner",
+      name: owner.name,
+      phone: owner.phone,
+    };
+  }
+
+  const staffRows = getDb().prepare("SELECT * FROM staff").all() as {
+    business_id: string;
+    name: string;
+    phone: string;
+    permission: Permission;
+  }[];
+  const staff = staffRows.find((s) => normalizePhone(s.phone) === normalized);
+  if (staff) {
+    return {
+      businessId: staff.business_id,
+      role: staff.permission === "add" ? "staff_add" : "staff_view",
+      name: staff.name,
+      phone: normalizePhone(staff.phone),
+    };
+  }
+
+  // Legacy primary owner field
+  const business = listBusinesses().find((b) => normalizePhone(b.owner_whatsapp || "") === normalized);
+  if (business) {
+    // Ensure owner row exists for next time
+    const owners = getOwners(business.id);
+    if (owners.length === 0) {
+      getDb()
+        .prepare(
+          `INSERT INTO business_owners (id, business_id, name, phone, access_type, is_primary, added_at)
+           VALUES (?, ?, ?, ?, 'equal', 1, ?)`,
+        )
+        .run(newId(), business.id, "Owner", normalized, nowIso());
+      schedulePersistDb();
+    }
+    return {
+      businessId: business.id,
+      role: "equal_owner",
+      name: "Owner",
+      phone: normalized,
+    };
+  }
+
+  return null;
+}
+
 /** Staff always stores name AND WhatsApp number — both required. */
 export function getStaff(businessId: string): StaffMember[] {
   const rows = getDb()
@@ -317,9 +505,12 @@ export function addStaff(
   input: { name: string; phone: string; permission: Permission },
 ): StaffMember {
   const name = input.name.trim();
-  const phone = input.phone.trim();
+  const phone = normalizePhone(input.phone);
   if (!name) throw new Error("Name is required");
   if (!phone) throw new Error("WhatsApp number is required");
+
+  const existingMember = findMembershipByPhone(phone);
+  if (existingMember) throw new Error("That WhatsApp number is already on an account");
 
   const id = newId();
   const addedAt = nowIso();
@@ -377,12 +568,9 @@ export function findProductByName(businessId: string, query: string): Product | 
 }
 
 export function findBusinessByWhatsapp(phone: string): BusinessRow | null {
-  const normalized = phone.replace(/\s/g, "").replace(/^whatsapp:/i, "");
-  return (
-    listBusinesses().find(
-      (b) => (b.owner_whatsapp || "").replace(/\s/g, "").replace(/^whatsapp:/i, "") === normalized,
-    ) ?? null
-  );
+  const membership = findMembershipByPhone(phone);
+  if (!membership) return null;
+  return getBusiness(membership.businessId);
 }
 
 export function runBackup(businessId: string): { path: string; at: string } {
@@ -467,6 +655,7 @@ function seedSampleProducts(businessId: string) {
 export function buildBusinessState(businessId: string) {
   const business = getBusiness(businessId);
   if (!business) return null;
+  ensureOwnersTable();
   return {
     id: business.id,
     onboarded: true,
@@ -474,6 +663,7 @@ export function buildBusinessState(businessId: string) {
     language: business.language,
     products: getProducts(businessId),
     staff: getStaff(businessId),
+    owners: getOwners(businessId),
     lastBackup: business.last_backup,
     connectedStores: business.connected_stores,
     ownerWhatsapp: business.owner_whatsapp,

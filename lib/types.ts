@@ -23,11 +23,24 @@ export type Product = {
 
 export type Permission = "add" | "view";
 
+export type OwnerAccess = "equal" | "co";
+
+export type AccessRole = "equal_owner" | "co_owner" | "staff_add" | "staff_view";
+
 export type StaffMember = {
   id: string;
   name: string;
   phone: string;
   permission: Permission;
+  addedAt: string;
+};
+
+export type BusinessOwner = {
+  id: string;
+  name: string;
+  phone: string;
+  access: OwnerAccess;
+  isPrimary: boolean;
   addedAt: string;
 };
 
@@ -48,6 +61,7 @@ export type AppState = {
   language: Lang;
   products: Product[];
   staff: StaffMember[];
+  owners: BusinessOwner[];
   lastBackup: string | null;
   connectedStores: number;
   ownerWhatsapp: string | null;

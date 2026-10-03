@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { defaultState } from "@/lib/data";
 import type { Lang } from "@/lib/i18n";
-import type { AlertItem, AppState, Location, Permission, Product } from "@/lib/types";
+import type { AlertItem, AppState, Location, OwnerAccess, Permission, Product, AccessRole } from "@/lib/types";
 
 type StoreValue = {
   ready: boolean;
@@ -12,6 +12,8 @@ type StoreValue = {
   authenticated: boolean;
   needsSetup: boolean;
   phone: string | null;
+  role: AccessRole | null;
+  homePath: string;
   state: AppState;
   setLanguage: (language: Lang) => Promise<void>;
   setBusinessName: (businessName: string) => Promise<void>;
@@ -31,6 +33,8 @@ type StoreValue = {
     photo?: string;
   }) => Promise<void>;
   addStaff: (name: string, phone: string, permission: Permission) => Promise<void>;
+  addOwner: (name: string, phone: string, access: OwnerAccess) => Promise<void>;
+  removeOwner: (ownerId: string) => Promise<void>;
   recordSale: (productId: string, location: Location, quantity: number) => Promise<void>;
   recordPurchasePrice: (productId: string, price: number) => Promise<{ alert: AlertItem | null }>;
   runBackup: () => Promise<void>;
@@ -58,6 +62,7 @@ function toState(business: ApiBusiness | null | undefined): AppState {
     language: business.language,
     products: business.products ?? [],
     staff: business.staff ?? [],
+    owners: business.owners ?? [],
     lastBackup: business.lastBackup ?? null,
     connectedStores: business.connectedStores ?? 0,
     ownerWhatsapp: business.ownerWhatsapp ?? null,
@@ -87,6 +92,8 @@ async function readJson(res: Response) {
     authenticated?: boolean;
     needsSetup?: boolean;
     phone?: string | null;
+    role?: AccessRole | null;
+    homePath?: string;
     ok?: boolean;
     devCode?: string;
     warning?: string;
@@ -109,6 +116,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [authenticated, setAuthenticated] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [phone, setPhone] = useState<string | null>(null);
+  const [role, setRole] = useState<AccessRole | null>(null);
+  const [homePath, setHomePath] = useState("/dashboard");
 
   const refresh = useCallback(async () => {
     const res = await fetch("/api/business", { cache: "no-store" });
@@ -116,6 +125,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setAuthenticated(Boolean(data.authenticated));
     setNeedsSetup(Boolean(data.needsSetup));
     setPhone(data.phone ?? null);
+    setRole(data.role ?? null);
+    setHomePath(data.homePath || "/dashboard");
     setState(toState(data.business));
   }, []);
 
@@ -130,6 +141,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           setAuthenticated(false);
           setNeedsSetup(false);
           setPhone(null);
+          setRole(null);
+          setHomePath("/");
           setError(networkMessage(err));
         }
       } finally {
@@ -215,6 +228,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setAuthenticated(false);
       setNeedsSetup(false);
       setPhone(null);
+      setRole(null);
+      setHomePath("/");
       setState(defaultState);
     });
   }, [run]);
@@ -255,6 +270,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const data = await readJson(res);
         setAuthenticated(true);
         setNeedsSetup(false);
+        setRole((data.role as AccessRole) || "equal_owner");
+        setHomePath(data.homePath || "/dashboard");
         setState(toState(data.business));
       });
     },
@@ -276,6 +293,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const data = await readJson(res);
         setAuthenticated(true);
         setNeedsSetup(false);
+        setRole((data.role as AccessRole) || "equal_owner");
+        setHomePath(data.homePath || "/dashboard");
         setState(toState(data.business));
       });
     },
@@ -304,6 +323,26 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     async (name: string, phoneNumber: string, permission: Permission) => {
       await run(async () => {
         const data = await stockAction({ action: "addStaff", name, phone: phoneNumber, permission });
+        setState(toState(data.business));
+      });
+    },
+    [run, stockAction],
+  );
+
+  const addOwnerMember = useCallback(
+    async (name: string, phoneNumber: string, access: OwnerAccess) => {
+      await run(async () => {
+        const data = await stockAction({ action: "addOwner", name, phone: phoneNumber, access });
+        setState(toState(data.business));
+      });
+    },
+    [run, stockAction],
+  );
+
+  const removeOwnerMember = useCallback(
+    async (ownerId: string) => {
+      await run(async () => {
+        const data = await stockAction({ action: "removeOwner", ownerId });
         setState(toState(data.business));
       });
     },
@@ -379,6 +418,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setAuthenticated(false);
       setNeedsSetup(false);
       setPhone(null);
+      setRole(null);
+      setHomePath("/");
       setState(defaultState);
     });
   }, [run]);
@@ -391,6 +432,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       authenticated,
       needsSetup,
       phone,
+      role,
+      homePath,
       state,
       setLanguage,
       setBusinessName,
@@ -402,6 +445,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       startSample,
       addProduct,
       addStaff,
+      addOwner: addOwnerMember,
+      removeOwner: removeOwnerMember,
       recordSale,
       recordPurchasePrice,
       runBackup,
@@ -417,6 +462,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       authenticated,
       needsSetup,
       phone,
+      role,
+      homePath,
       state,
       setLanguage,
       setBusinessName,
@@ -428,6 +475,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       startSample,
       addProduct,
       addStaff,
+      addOwnerMember,
+      removeOwnerMember,
       recordSale,
       recordPurchasePrice,
       runBackup,

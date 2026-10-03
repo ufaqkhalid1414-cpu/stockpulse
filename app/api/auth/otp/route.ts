@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { homePathForRole } from "@/lib/access";
 import { ensureDbReady, persistDb } from "@/lib/db";
+import { findMembershipByPhone } from "@/lib/db/queries";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
 import {
   createOtp,
@@ -94,12 +96,16 @@ export async function POST(request: Request) {
       await createSession(phone, existing?.id ?? null);
       await persistDb();
 
+      const membership = findMembershipByPhone(phone);
+
       return NextResponse.json({
         ok: true,
         authenticated: true,
         needsSetup: !existing,
         phone,
         businessId: existing?.id ?? null,
+        role: membership?.role ?? null,
+        homePath: membership ? homePathForRole(membership.role) : "/",
       });
     }
 
