@@ -1,5 +1,15 @@
 import type { Lang } from "@/lib/i18n";
-import type { AccessRole, BusinessOwner, Location, OwnerAccess, Permission, PricePoint, Product, StaffMember } from "@/lib/types";
+import type {
+  AccessRole,
+  BusinessOwner,
+  Location,
+  OwnerAccess,
+  Permission,
+  PricePoint,
+  Product,
+  ShopifyConnectionPublic,
+  StaffMember,
+} from "@/lib/types";
 import { getBackupDir, getDb, getDbPath, newId, nowIso, schedulePersistDb } from "@/lib/db";
 import { normalizePhone } from "@/lib/phone";
 import fs from "fs";
@@ -89,6 +99,7 @@ function mapProduct(row: Record<string, unknown>, history: PricePoint[]): Produc
     purchasePrice: Number(row.purchase_price ?? 0),
     restockThreshold: Number(row.restock_threshold ?? 1),
     photo: row.photo ? String(row.photo) : undefined,
+    shopifyVariantId: row.shopify_variant_id ? String(row.shopify_variant_id) : null,
     priceHistory: history,
   };
 }
@@ -701,6 +712,164 @@ function seedSampleProducts(businessId: string) {
     .run(newId(), businessId, "Sara Ali", "+92 321 555 0198", "view", "2026-09-03T08:30:00.000Z");
 }
 
+export type ShopifyConnectionRow = {
+  business_id: string;
+  shop_domain: string;
+  access_token: string;
+  connected_at: string;
+  last_sync_at: string | null;
+  last_sync_error: string | null;
+  last_sync_count: number;
+};
+
+export function getShopifyConnection(businessId: string): ShopifyConnectionRow | null {
+  const row = getDb()
+    .prepare("SELECT * FROM business_shopify WHERE business_id = ?")
+    .get(businessId) as ShopifyConnectionRow | undefined;
+  return row ?? null;
+}
+
+export function getShopifyConnectionPublic(businessId: string): ShopifyConnectionPublic {
+  const row = getShopifyConnection(businessId);
+  if (!row) {
+    return {
+      connected: false,
+      shopDomain: null,
+      connectedAt: null,
+      lastSyncAt: null,
+      lastSyncError: null,
+      lastSyncCount: 0,
+    };
+  }
+  return {
+    connected: true,
+    shopDomain: row.shop_domain,
+    connectedAt: row.connected_at,
+    lastSyncAt: row.last_sync_at,
+    lastSyncError: row.last_sync_error,
+    lastSyncCount: row.last_sync_count,
+  };
+}
+
+export function saveShopifyConnection(businessId: string, shopDomain: string, accessToken: string) {
+  const connectedAt = nowIso();
+  getDb()
+    .prepare(
+      `INSERT INTO business_shopify (business_id, shop_domain, access_token, connected_at, last_sync_at, last_sync_error, last_sync_count)
+       VALUES (?, ?, ?, ?, NULL, NULL, 0)
+       ON CONFLICT(business_id) DO UPDATE SET
+         shop_domain = excluded.shop_domain,
+         access_token = excluded.access_token,
+         connected_at = excluded.connected_at,
+         last_sync_error = NULL`,
+    )
+    .run(businessId, shopDomain, accessToken, connectedAt);
+  updateBusiness(businessId, { connectedStores: 1 });
+  schedulePersistDb();
+  return getShopifyConnectionPublic(businessId);
+}
+
+export function clearShopifyConnection(businessId: string) {
+  getDb().prepare("DELETE FROM business_shopify WHERE business_id = ?").run(businessId);
+  updateBusiness(businessId, { connectedStores: 0 });
+  schedulePersistDb();
+}
+
+export function markShopifySyncResult(
+  businessId: string,
+  result: { ok: boolean; count: number; error?: string },
+) {
+  getDb()
+    .prepare(
+      `UPDATE business_shopify
+       SET last_sync_at = ?, last_sync_error = ?, last_sync_count = ?
+       WHERE business_id = ?`,
+    )
+    .run(nowIso(), result.ok ? null : result.error || "Sync failed", result.count, businessId);
+  if (result.ok) updateBusiness(businessId, { connectedStores: 1 });
+  schedulePersistDb();
+}
+
+export type ShopifySyncItem = {
+  shopifyVariantId: string;
+  name: string;
+  category: string;
+  variant: string;
+  onlineQty: number;
+  purchasePrice: number;
+};
+
+/** One-way pull: create/update products and set online qty from Shopify. */
+export function applyShopifyProductSync(businessId: string, items: ShopifySyncItem[]) {
+  clearSampleInventory(businessId);
+  const existing = getDb()
+    .prepare("SELECT * FROM products WHERE business_id = ?")
+    .all(businessId) as Record<string, unknown>[];
+
+  let upserted = 0;
+  for (const item of items) {
+    const byVariant = existing.find((row) => String(row.shopify_variant_id || "") === item.shopifyVariantId);
+    const byName = existing.find(
+      (row) =>
+        String(row.name).toLowerCase() === item.name.toLowerCase() &&
+        String(row.variant || "").toLowerCase() === item.variant.toLowerCase(),
+    );
+    const match = byVariant || byName;
+
+    if (match) {
+      getDb()
+        .prepare(
+          `UPDATE products
+           SET online_qty = ?, shopify_variant_id = ?, category = COALESCE(NULLIF(category, ''), ?)
+           WHERE id = ? AND business_id = ?`,
+        )
+        .run(item.onlineQty, item.shopifyVariantId, item.category, String(match.id), businessId);
+      match.shopify_variant_id = item.shopifyVariantId;
+      match.online_qty = item.onlineQty;
+      upserted += 1;
+      continue;
+    }
+
+    const id = newId();
+    const created = nowIso();
+    const threshold = Math.max(1, Math.round(item.onlineQty * 0.3) || 1);
+    getDb()
+      .prepare(
+        `INSERT INTO products
+         (id, business_id, name, category, variant, warehouse_qty, shop_qty, online_qty, purchase_price, restock_threshold, photo, created_at, shopify_variant_id)
+         VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, ?, NULL, ?, ?)`,
+      )
+      .run(
+        id,
+        businessId,
+        item.name,
+        item.category,
+        item.variant,
+        item.onlineQty,
+        item.purchasePrice,
+        threshold,
+        created,
+        item.shopifyVariantId,
+      );
+    if (item.purchasePrice > 0) {
+      getDb()
+        .prepare(`INSERT INTO price_history (id, product_id, business_id, price, recorded_at) VALUES (?, ?, ?, ?, ?)`)
+        .run(newId(), id, businessId, item.purchasePrice, created);
+    }
+    existing.push({
+      id,
+      name: item.name,
+      variant: item.variant,
+      shopify_variant_id: item.shopifyVariantId,
+      online_qty: item.onlineQty,
+    });
+    upserted += 1;
+  }
+
+  schedulePersistDb();
+  return upserted;
+}
+
 export function buildBusinessState(businessId: string) {
   const business = getBusiness(businessId);
   if (!business) return null;
@@ -719,5 +888,6 @@ export function buildBusinessState(businessId: string) {
     priceThreshold: business.price_threshold,
     alerts: getAlerts(businessId, 10),
     isSample: Boolean(business.is_sample),
+    shopify: getShopifyConnectionPublic(businessId),
   };
 }

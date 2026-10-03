@@ -3,7 +3,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { defaultState } from "@/lib/data";
 import type { Lang } from "@/lib/i18n";
-import type { AlertItem, AppState, Location, OwnerAccess, Permission, Product, AccessRole } from "@/lib/types";
+import type {
+  AlertItem,
+  AppState,
+  Location,
+  OwnerAccess,
+  Permission,
+  Product,
+  AccessRole,
+  ShopifyConnectionPublic,
+} from "@/lib/types";
 
 type StoreValue = {
   ready: boolean;
@@ -42,6 +51,9 @@ type StoreValue = {
   sendMonthlyChart: (productId?: string) => Promise<void>;
   /** @deprecated use sendMonthlyChart */
   sendWeeklyChart: (productId?: string) => Promise<void>;
+  connectShopify: (shopDomain: string, accessToken: string) => Promise<void>;
+  syncShopify: () => Promise<{ count: number }>;
+  disconnectShopify: () => Promise<void>;
   reset: () => Promise<void>;
   refresh: () => Promise<void>;
 };
@@ -71,6 +83,7 @@ function toState(business: ApiBusiness | null | undefined): AppState {
     priceThreshold: business.priceThreshold ?? 10,
     alerts: business.alerts ?? [],
     isSample: Boolean(business.isSample),
+    shopify: business.shopify ?? defaultState.shopify,
   };
 }
 
@@ -97,6 +110,8 @@ async function readJson(res: Response) {
     role?: AccessRole | null;
     homePath?: string;
     ok?: boolean;
+    count?: number;
+    shopify?: ShopifyConnectionPublic;
     devCode?: string;
     warning?: string;
     sentWhatsapp?: boolean;
@@ -409,6 +424,40 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [run, stockAction],
   );
 
+  const shopifyAction = useCallback(async (body: Record<string, unknown>) => {
+    const res = await fetch("/api/shopify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return readJson(res);
+  }, []);
+
+  const connectShopify = useCallback(
+    async (shopDomain: string, accessToken: string) => {
+      await run(async () => {
+        const data = await shopifyAction({ action: "connect", shopDomain, accessToken });
+        setState(toState(data.business));
+      });
+    },
+    [run, shopifyAction],
+  );
+
+  const syncShopify = useCallback(async () => {
+    return run(async () => {
+      const data = await shopifyAction({ action: "sync" });
+      setState(toState(data.business));
+      return { count: Number((data as { count?: number }).count || 0) };
+    });
+  }, [run, shopifyAction]);
+
+  const disconnectShopify = useCallback(async () => {
+    await run(async () => {
+      const data = await shopifyAction({ action: "disconnect" });
+      setState(toState(data.business));
+    });
+  }, [run, shopifyAction]);
+
   const reset = useCallback(async () => {
     await run(async () => {
       const res = await fetch("/api/business", {
@@ -455,6 +504,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       sendDailyReport,
       sendMonthlyChart,
       sendWeeklyChart: sendMonthlyChart,
+      connectShopify,
+      syncShopify,
+      disconnectShopify,
       reset,
       refresh,
     }),
@@ -485,6 +537,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       runBackup,
       sendDailyReport,
       sendMonthlyChart,
+      connectShopify,
+      syncShopify,
+      disconnectShopify,
       reset,
       refresh,
     ],

@@ -19,6 +19,17 @@ export type Product = {
   restockThreshold: number;
   priceHistory: PricePoint[];
   photo?: string;
+  shopifyVariantId?: string | null;
+};
+
+/** Public Shopify connection status (token never sent to the client). */
+export type ShopifyConnectionPublic = {
+  connected: boolean;
+  shopDomain: string | null;
+  connectedAt: string | null;
+  lastSyncAt: string | null;
+  lastSyncError: string | null;
+  lastSyncCount: number;
 };
 
 export type Permission = "add" | "view";
@@ -68,4 +79,5 @@ export type AppState = {
   priceThreshold: number;
   alerts: AlertItem[];
   isSample?: boolean;
+  shopify?: ShopifyConnectionPublic;
 };

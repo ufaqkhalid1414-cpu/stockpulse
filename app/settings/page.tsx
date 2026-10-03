@@ -18,6 +18,9 @@ export default function SettingsPage() {
     runBackup,
     sendDailyReport,
     sendMonthlyChart,
+    connectShopify,
+    syncShopify,
+    disconnectShopify,
     reset,
     logout,
     busy,
@@ -27,6 +30,7 @@ export default function SettingsPage() {
   } = useStock();
   const lang = state.language;
   const canReset = role === "equal_owner";
+  const isOwner = role === "equal_owner" || role === "co_owner";
   const router = useRouter();
   const [name, setName] = useState(state.businessName);
   const [saved, setSaved] = useState(false);
@@ -34,10 +38,17 @@ export default function SettingsPage() {
   const [reportPreview, setReportPreview] = useState("");
   const [confirmReset, setConfirmReset] = useState(false);
   const [notice, setNotice] = useState("");
+  const [shopDomain, setShopDomain] = useState("");
+  const [shopToken, setShopToken] = useState("");
+  const shopify = state.shopify;
 
   useEffect(() => {
     setName(state.businessName);
   }, [state.businessName]);
+
+  useEffect(() => {
+    if (shopify?.shopDomain) setShopDomain(shopify.shopDomain);
+  }, [shopify?.shopDomain]);
 
   return (
     <AppShell>
@@ -89,6 +100,107 @@ export default function SettingsPage() {
           </Button>
         </div>
       </div>
+
+      {isOwner ? (
+        <div className="card mt-4 space-y-4 p-5 sm:p-6">
+          <div>
+            <p className="text-lg font-bold text-navy">{t(lang, "shopifyTitle")}</p>
+            <p className="mt-1 text-sm text-navy/60">{t(lang, "shopifySupport")}</p>
+            <p className="mt-3 text-xs leading-relaxed text-navy/55">{t(lang, "shopifySteps")}</p>
+          </div>
+
+          {shopify?.connected ? (
+            <div className="rounded-xl bg-cream px-4 py-3 text-sm text-navy">
+              <p className="font-semibold">{t(lang, "shopifyConnected", { shop: shopify.shopDomain || "" })}</p>
+              <p className="mt-1 text-navy/70">
+                {shopify.lastSyncAt
+                  ? t(lang, "shopifyLastSync", {
+                      time: formatWhen(shopify.lastSyncAt, lang),
+                      count: shopify.lastSyncCount,
+                    })
+                  : t(lang, "shopifyNeverSynced")}
+              </p>
+              {shopify.lastSyncError ? <p className="mt-2 text-clay">{shopify.lastSyncError}</p> : null}
+            </div>
+          ) : (
+            <p className="text-sm font-medium text-navy/60">{t(lang, "shopifyNotConnected")}</p>
+          )}
+
+          {!shopify?.connected ? (
+            <>
+              <Field id="shop-domain" label={t(lang, "shopifyDomain")}>
+                <input
+                  id="shop-domain"
+                  className="field"
+                  dir="ltr"
+                  value={shopDomain}
+                  onChange={(e) => setShopDomain(e.target.value)}
+                  placeholder={t(lang, "shopifyDomainPlaceholder")}
+                  autoComplete="off"
+                />
+              </Field>
+              <Field id="shop-token" label={t(lang, "shopifyToken")}>
+                <input
+                  id="shop-token"
+                  className="field"
+                  dir="ltr"
+                  type="password"
+                  value={shopToken}
+                  onChange={(e) => setShopToken(e.target.value)}
+                  placeholder={t(lang, "shopifyTokenPlaceholder")}
+                  autoComplete="off"
+                />
+                <p className="mt-1.5 text-xs text-navy/55">{t(lang, "shopifyTokenHint")}</p>
+              </Field>
+              <Button
+                disabled={busy || !shopDomain.trim() || !shopToken.trim()}
+                onClick={async () => {
+                  try {
+                    await connectShopify(shopDomain.trim(), shopToken.trim());
+                    setShopToken("");
+                    setNotice(t(lang, "shopifySaved"));
+                  } catch {
+                    /* store error */
+                  }
+                }}
+              >
+                {t(lang, "shopifySave")}
+              </Button>
+            </>
+          ) : (
+            <div className="flex flex-wrap gap-3">
+              <Button
+                disabled={busy}
+                onClick={async () => {
+                  try {
+                    const result = await syncShopify();
+                    setNotice(t(lang, "shopifySyncOk", { count: result.count }));
+                  } catch {
+                    /* store error */
+                  }
+                }}
+              >
+                {t(lang, "shopifySync")}
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={busy}
+                onClick={async () => {
+                  try {
+                    await disconnectShopify();
+                    setShopToken("");
+                    setNotice(t(lang, "shopifyDisconnected"));
+                  } catch {
+                    /* store error */
+                  }
+                }}
+              >
+                {t(lang, "shopifyDisconnect")}
+              </Button>
+            </div>
+          )}
+        </div>
+      ) : null}
 
       <div className="card mt-4 space-y-4 p-5 sm:p-6">
         <div className="flex items-start gap-3">

@@ -190,6 +190,17 @@ function migrate(database: DatabaseSync) {
       FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS business_shopify (
+      business_id TEXT PRIMARY KEY,
+      shop_domain TEXT NOT NULL,
+      access_token TEXT NOT NULL,
+      connected_at TEXT NOT NULL,
+      last_sync_at TEXT,
+      last_sync_error TEXT,
+      last_sync_count INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_products_business ON products(business_id);
     CREATE INDEX IF NOT EXISTS idx_staff_business ON staff(business_id);
     CREATE INDEX IF NOT EXISTS idx_price_business ON price_history(business_id);
@@ -201,6 +212,11 @@ function migrate(database: DatabaseSync) {
   const cols = database.prepare("PRAGMA table_info(businesses)").all() as { name: string }[];
   if (!cols.some((c) => c.name === "is_sample")) {
     database.exec("ALTER TABLE businesses ADD COLUMN is_sample INTEGER NOT NULL DEFAULT 0");
+  }
+
+  const productCols = database.prepare("PRAGMA table_info(products)").all() as { name: string }[];
+  if (!productCols.some((c) => c.name === "shopify_variant_id")) {
+    database.exec("ALTER TABLE products ADD COLUMN shopify_variant_id TEXT");
   }
 }
 

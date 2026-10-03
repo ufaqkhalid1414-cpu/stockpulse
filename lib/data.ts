@@ -219,6 +219,14 @@ export function createSampleState(businessName: string, language: Lang): AppStat
     ownerWhatsapp: null,
     priceThreshold: 10,
     alerts: [],
+    shopify: {
+      connected: false,
+      shopDomain: null,
+      connectedAt: null,
+      lastSyncAt: null,
+      lastSyncError: null,
+      lastSyncCount: 0,
+    },
   };
 }
 
@@ -234,4 +242,12 @@ export const defaultState: AppState = {
   ownerWhatsapp: null,
   priceThreshold: 10,
   alerts: [],
+  shopify: {
+    connected: false,
+    shopDomain: null,
+    connectedAt: null,
+    lastSyncAt: null,
+    lastSyncError: null,
+    lastSyncCount: 0,
+  },
 };
