@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   const mediaType = numMedia > 0 ? String(form.get("MediaContentType0") || "") : "";
 
   const phone = from.replace(/^whatsapp:/i, "");
-  const business = findBusinessByWhatsapp(phone);
+  const business = await findBusinessByWhatsapp(phone);
 
   let question = body;
   if ((!question || mediaType.startsWith("audio/")) && mediaUrl) {
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     return twiml(msg);
   }
 
-  const answer = answerWhatsAppQuestion(business, question);
+  const answer = await answerWhatsAppQuestion(business, question);
   if (twilioConfigured()) {
     await sendWhatsApp(phone, answer).catch((err) => console.error(err));
   }

@@ -34,7 +34,7 @@ export async function POST(request: Request) {
 
       let code: string;
       try {
-        ({ code } = createOtp(phone));
+        ({ code } = await createOtp(phone));
       } catch (err) {
         return NextResponse.json(
           { error: err instanceof Error ? err.message : "Could not create code" },
@@ -88,15 +88,15 @@ export async function POST(request: Request) {
       if (!/^\d{6}$/.test(code)) {
         return NextResponse.json({ error: "Enter the 6-digit code from WhatsApp." }, { status: 400 });
       }
-      if (!verifyOtp(phone, code)) {
+      if (!await verifyOtp(phone, code)) {
         return NextResponse.json({ error: "That code is wrong or expired. Request a new one." }, { status: 401 });
       }
 
-      const existing = resolveBusinessForPhone(phone);
+      const existing = await resolveBusinessForPhone(phone);
       await createSession(phone, existing?.id ?? null);
       await persistDb();
 
-      const membership = findMembershipByPhone(phone);
+      const membership = await findMembershipByPhone(phone);
 
       return NextResponse.json({
         ok: true,

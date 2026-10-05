@@ -10,7 +10,7 @@ import type {
   ShopifyConnectionPublic,
   StaffMember,
 } from "@/lib/types";
-import { getBackupDir, getDb, getDbPath, newId, nowIso, schedulePersistDb } from "@/lib/db";
+import { ensureDbReady, getBackupDir, getDb, newId, nowIso, schedulePersistDb } from "@/lib/db";
 import { normalizePhone } from "@/lib/phone";
 import fs from "fs";
 import path from "path";
@@ -47,9 +47,10 @@ export type AlertRow = {
 
 let ownersReady = false;
 
-export function ensureOwnersTable() {
+export async function ensureOwnersTable() {
+  await ensureDbReady();
   if (ownersReady) return;
-  getDb().exec(`
+  await getDb().exec(`
     CREATE TABLE IF NOT EXISTS business_owners (
       id TEXT PRIMARY KEY,
       business_id TEXT NOT NULL,
@@ -65,7 +66,7 @@ export function ensureOwnersTable() {
   `);
 
   // Migrate legacy primary owner_whatsapp into business_owners
-  const businesses = getDb().prepare("SELECT id, owner_whatsapp, created_at FROM businesses").all() as {
+  const businesses = await getDb().prepare("SELECT id, owner_whatsapp, created_at FROM businesses").all() as {
     id: string;
     owner_whatsapp: string | null;
     created_at: string;
@@ -73,11 +74,11 @@ export function ensureOwnersTable() {
   for (const biz of businesses) {
     if (!biz.owner_whatsapp) continue;
     const phone = normalizePhone(biz.owner_whatsapp);
-    const count = getDb()
+    const count = await getDb()
       .prepare("SELECT COUNT(*) as c FROM business_owners WHERE business_id = ?")
       .get(biz.id) as { c: number };
     if (Number(count.c) > 0) continue;
-    getDb()
+    await getDb()
       .prepare(
         `INSERT INTO business_owners (id, business_id, name, phone, access_type, is_primary, added_at)
          VALUES (?, ?, ?, ?, 'equal', 1, ?)`,
@@ -109,25 +110,25 @@ function monthKey(iso: string) {
   return ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"][d.getMonth()];
 }
 
-export function getBusiness(id: string): BusinessRow | null {
-  const row = getDb().prepare("SELECT * FROM businesses WHERE id = ?").get(id) as BusinessRow | undefined;
+export async function getBusiness(id: string): Promise<BusinessRow | null> {
+  const row = await getDb().prepare("SELECT * FROM businesses WHERE id = ?").get(id) as BusinessRow | undefined;
   if (!row) return null;
   return { ...row, is_sample: Number(row.is_sample ?? 0) };
 }
 
-export function listBusinesses(): BusinessRow[] {
-  return getDb().prepare("SELECT * FROM businesses ORDER BY created_at DESC").all() as BusinessRow[];
+export async function listBusinesses(): Promise<BusinessRow[]> {
+  return await getDb().prepare("SELECT * FROM businesses ORDER BY created_at DESC").all() as BusinessRow[];
 }
 
-export function createBusiness(input: {
+export async function createBusiness(input: {
   name: string;
   language?: Lang;
   ownerWhatsapp?: string;
   seedSample?: boolean;
-}): BusinessRow {
+}): Promise<BusinessRow> {
   const id = newId();
   const created = nowIso();
-  getDb()
+  await getDb()
     .prepare(
       `INSERT INTO businesses (id, name, language, owner_whatsapp, price_threshold, connected_stores, last_backup, created_at, is_sample)
        VALUES (?, ?, ?, ?, 10, ?, NULL, ?, ?)`,
@@ -142,11 +143,11 @@ export function createBusiness(input: {
       input.seedSample ? 1 : 0,
     );
 
-  if (input.seedSample) seedSampleProducts(id);
+  if (input.seedSample) await seedSampleProducts(id);
   if (input.ownerWhatsapp) {
-    ensureOwnersTable();
+    await ensureOwnersTable();
     const phone = normalizePhone(input.ownerWhatsapp);
-    getDb()
+    await getDb()
       .prepare(
         `INSERT INTO business_owners (id, business_id, name, phone, access_type, is_primary, added_at)
          VALUES (?, ?, ?, ?, 'equal', 1, ?)`,
@@ -154,10 +155,10 @@ export function createBusiness(input: {
       .run(newId(), id, "Owner", phone, created);
   }
   schedulePersistDb();
-  return getBusiness(id)!;
+  return (await getBusiness(id))!;
 }
 
-export function updateBusiness(
+export async function updateBusiness(
   id: string,
   patch: Partial<{
     name: string;
@@ -168,9 +169,9 @@ export function updateBusiness(
     lastBackup: string | null;
   }>,
 ) {
-  const current = getBusiness(id);
+  const current = await getBusiness(id);
   if (!current) throw new Error("Business not found");
-  getDb()
+  await getDb()
     .prepare(
       `UPDATE businesses SET name = ?, language = ?, owner_whatsapp = ?, price_threshold = ?, connected_stores = ?, last_backup = ?
        WHERE id = ?`,
@@ -185,30 +186,30 @@ export function updateBusiness(
       id,
     );
   schedulePersistDb();
-  return getBusiness(id)!;
+  return (await getBusiness(id))!;
 }
 
 /** Remove demo products/staff so real inventory never mixes with sample stock. */
-export function clearSampleInventory(businessId: string) {
-  const business = getBusiness(businessId);
+export async function clearSampleInventory(businessId: string) {
+  const business = await getBusiness(businessId);
   if (!business || !business.is_sample) return false;
-  getDb().prepare("DELETE FROM sales WHERE business_id = ?").run(businessId);
-  getDb().prepare("DELETE FROM alerts WHERE business_id = ?").run(businessId);
-  getDb().prepare("DELETE FROM price_history WHERE business_id = ?").run(businessId);
-  getDb().prepare("DELETE FROM products WHERE business_id = ?").run(businessId);
-  getDb().prepare("DELETE FROM staff WHERE business_id = ?").run(businessId);
-  getDb().prepare("UPDATE businesses SET is_sample = 0, connected_stores = 0 WHERE id = ?").run(businessId);
+  await getDb().prepare("DELETE FROM sales WHERE business_id = ?").run(businessId);
+  await getDb().prepare("DELETE FROM alerts WHERE business_id = ?").run(businessId);
+  await getDb().prepare("DELETE FROM price_history WHERE business_id = ?").run(businessId);
+  await getDb().prepare("DELETE FROM products WHERE business_id = ?").run(businessId);
+  await getDb().prepare("DELETE FROM staff WHERE business_id = ?").run(businessId);
+  await getDb().prepare("UPDATE businesses SET is_sample = 0, connected_stores = 0 WHERE id = ?").run(businessId);
   schedulePersistDb();
   return true;
 }
 
-export function deleteBusiness(id: string) {
-  getDb().prepare("DELETE FROM businesses WHERE id = ?").run(id);
+export async function deleteBusiness(id: string) {
+  await getDb().prepare("DELETE FROM businesses WHERE id = ?").run(id);
   schedulePersistDb();
 }
 
-export function getPriceHistory(productId: string, businessId: string): PricePoint[] {
-  const rows = getDb()
+export async function getPriceHistory(productId: string, businessId: string): Promise<PricePoint[]> {
+  const rows = await getDb()
     .prepare(
       `SELECT price, recorded_at FROM price_history
        WHERE product_id = ? AND business_id = ?
@@ -221,8 +222,8 @@ export function getPriceHistory(productId: string, businessId: string): PricePoi
   return [...byMonth.entries()].map(([month, price]) => ({ month, price }));
 }
 
-export function getRecentPurchasePrices(productId: string, businessId: string, limit = 3): number[] {
-  const rows = getDb()
+export async function getRecentPurchasePrices(productId: string, businessId: string, limit = 3): Promise<number[]> {
+  const rows = await getDb()
     .prepare(
       `SELECT price FROM price_history
        WHERE product_id = ? AND business_id = ?
@@ -244,12 +245,12 @@ export type MonthlyPricePoint = {
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** Average purchase price per calendar month from actual price_history rows. */
-export function getMonthlyPurchasePrices(
+export async function getMonthlyPurchasePrices(
   productId: string,
   businessId: string,
   months = 6,
-): MonthlyPricePoint[] {
-  const rows = getDb()
+): Promise<MonthlyPricePoint[]> {
+  const rows = await getDb()
     .prepare(
       `SELECT price, recorded_at FROM price_history
        WHERE product_id = ? AND business_id = ?
@@ -281,22 +282,26 @@ export function getMonthlyPurchasePrices(
     }));
 }
 
-export function getProducts(businessId: string): Product[] {
-  const rows = getDb()
+export async function getProducts(businessId: string): Promise<Product[]> {
+  const rows = (await getDb()
     .prepare("SELECT * FROM products WHERE business_id = ? ORDER BY created_at DESC")
-    .all(businessId) as Record<string, unknown>[];
-  return rows.map((row) => mapProduct(row, getPriceHistory(String(row.id), businessId)));
+    .all(businessId)) as Record<string, unknown>[];
+  const products: Product[] = [];
+  for (const row of rows) {
+    products.push(mapProduct(row, await getPriceHistory(String(row.id), businessId)));
+  }
+  return products;
 }
 
-export function getProduct(businessId: string, productId: string): Product | null {
-  const row = getDb()
+export async function getProduct(businessId: string, productId: string): Promise<Product | null> {
+  const row = await getDb()
     .prepare("SELECT * FROM products WHERE id = ? AND business_id = ?")
     .get(productId, businessId) as Record<string, unknown> | undefined;
   if (!row) return null;
-  return mapProduct(row, getPriceHistory(productId, businessId));
+  return mapProduct(row, await getPriceHistory(productId, businessId));
 }
 
-export function addProduct(
+export async function addProduct(
   businessId: string,
   input: {
     name: string;
@@ -307,8 +312,8 @@ export function addProduct(
     purchasePrice: number;
     photo?: string;
   },
-): Product {
-  clearSampleInventory(businessId);
+): Promise<Product> {
+  await clearSampleInventory(businessId);
 
   const id = newId();
   const created = nowIso();
@@ -317,7 +322,7 @@ export function addProduct(
   const online = input.location === "online" ? input.quantity : 0;
   const threshold = Math.max(1, Math.round(input.quantity * 0.3));
 
-  getDb()
+  await getDb()
     .prepare(
       `INSERT INTO products
        (id, business_id, name, category, variant, warehouse_qty, shop_qty, online_qty, purchase_price, restock_threshold, photo, created_at)
@@ -338,30 +343,30 @@ export function addProduct(
       created,
     );
 
-  getDb()
+  await getDb()
     .prepare(`INSERT INTO price_history (id, product_id, business_id, price, recorded_at) VALUES (?, ?, ?, ?, ?)`)
     .run(newId(), id, businessId, input.purchasePrice, created);
 
   schedulePersistDb();
-  return getProduct(businessId, id)!;
+  return (await getProduct(businessId, id))!;
 }
 
-export function recordPurchasePrice(
+export async function recordPurchasePrice(
   businessId: string,
   productId: string,
   price: number,
-): { product: Product; alert: AlertRow | null } {
-  const product = getProduct(businessId, productId);
+): Promise<{ product: Product; alert: AlertRow | null }> {
+  const product = await getProduct(businessId, productId);
   if (!product) throw new Error("Product not found");
-  const business = getBusiness(businessId);
+  const business = await getBusiness(businessId);
   if (!business) throw new Error("Business not found");
 
-  const previous = getRecentPurchasePrices(productId, businessId, 3);
+  const previous = await getRecentPurchasePrices(productId, businessId, 3);
   const recorded = nowIso();
-  getDb()
+  await getDb()
     .prepare(`INSERT INTO price_history (id, product_id, business_id, price, recorded_at) VALUES (?, ?, ?, ?, ?)`)
     .run(newId(), productId, businessId, price, recorded);
-  getDb().prepare(`UPDATE products SET purchase_price = ? WHERE id = ? AND business_id = ?`).run(price, productId, businessId);
+  await getDb().prepare(`UPDATE products SET purchase_price = ? WHERE id = ? AND business_id = ?`).run(price, productId, businessId);
 
   let alert: AlertRow | null = null;
   if (previous.length > 0) {
@@ -374,20 +379,20 @@ export function recordPurchasePrice(
             ? `${product.name} jumped ${Math.abs(pct).toFixed(1)}%`
             : `${product.name} dropped ${Math.abs(pct).toFixed(1)}%`;
         const body = `New purchase price ${price} vs last ${baseline} (threshold ±${business.price_threshold}%).`;
-        alert = createAlert(businessId, { productId, kind: "price", title, body });
+        alert = await createAlert(businessId, { productId, kind: "price", title, body });
       }
     }
   }
 
   schedulePersistDb();
-  return { product: getProduct(businessId, productId)!, alert };
+  return { product: (await getProduct(businessId, productId))!, alert };
 }
 
-export function recordSale(
+export async function recordSale(
   businessId: string,
   input: { productId: string; location: Location; quantity: number },
-): Product {
-  const product = getProduct(businessId, input.productId);
+): Promise<Product> {
+  const product = await getProduct(businessId, input.productId);
   if (!product) throw new Error("Product not found");
   if (input.quantity <= 0) throw new Error("Quantity must be above zero");
 
@@ -403,11 +408,11 @@ export function recordSale(
   const nextShop = input.location === "shop" ? product.shopQty - input.quantity : product.shopQty;
   const nextOnline = input.location === "online" ? product.onlineQty - input.quantity : product.onlineQty;
 
-  getDb()
+  await getDb()
     .prepare(`UPDATE products SET warehouse_qty = ?, shop_qty = ?, online_qty = ? WHERE id = ? AND business_id = ?`)
     .run(nextWarehouse, nextShop, nextOnline, input.productId, businessId);
 
-  getDb()
+  await getDb()
     .prepare(
       `INSERT INTO sales (id, business_id, product_id, location, quantity, unit_price, recorded_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -415,12 +420,12 @@ export function recordSale(
     .run(newId(), businessId, input.productId, input.location, input.quantity, product.purchasePrice, nowIso());
 
   schedulePersistDb();
-  return getProduct(businessId, input.productId)!;
+  return (await getProduct(businessId, input.productId))!;
 }
 
-export function getOwners(businessId: string): BusinessOwner[] {
-  ensureOwnersTable();
-  const rows = getDb()
+export async function getOwners(businessId: string): Promise<BusinessOwner[]> {
+  await ensureOwnersTable();
+  const rows = await getDb()
     .prepare("SELECT * FROM business_owners WHERE business_id = ? ORDER BY is_primary DESC, added_at ASC")
     .all(businessId) as {
     id: string;
@@ -440,30 +445,30 @@ export function getOwners(businessId: string): BusinessOwner[] {
   }));
 }
 
-export function getOwnerPhones(businessId: string): string[] {
+export async function getOwnerPhones(businessId: string): Promise<string[]> {
   const phones = new Set<string>();
-  for (const owner of getOwners(businessId)) phones.add(normalizePhone(owner.phone));
-  const business = getBusiness(businessId);
+  for (const owner of await getOwners(businessId)) phones.add(normalizePhone(owner.phone));
+  const business = await getBusiness(businessId);
   if (business?.owner_whatsapp) phones.add(normalizePhone(business.owner_whatsapp));
   return [...phones].filter(Boolean);
 }
 
-export function addOwner(
+export async function addOwner(
   businessId: string,
   input: { name: string; phone: string; access: OwnerAccess },
-): BusinessOwner {
-  ensureOwnersTable();
+): Promise<BusinessOwner> {
+  await ensureOwnersTable();
   const name = input.name.trim();
   const phone = normalizePhone(input.phone);
   if (!name) throw new Error("Name is required");
   if (!phone) throw new Error("WhatsApp number is required");
 
-  const existingMember = findMembershipByPhone(phone);
+  const existingMember = await findMembershipByPhone(phone);
   if (existingMember) throw new Error("That WhatsApp number is already on an account");
 
   const id = newId();
   const addedAt = nowIso();
-  getDb()
+  await getDb()
     .prepare(
       `INSERT INTO business_owners (id, business_id, name, phone, access_type, is_primary, added_at)
        VALUES (?, ?, ?, ?, ?, 0, ?)`,
@@ -473,9 +478,9 @@ export function addOwner(
   return { id, name, phone, access: input.access === "co" ? "co" : "equal", isPrimary: false, addedAt };
 }
 
-export function removeOwner(businessId: string, ownerId: string) {
-  ensureOwnersTable();
-  const owners = getOwners(businessId);
+export async function removeOwner(businessId: string, ownerId: string) {
+  await ensureOwnersTable();
+  const owners = await getOwners(businessId);
   const target = owners.find((o) => o.id === ownerId);
   if (!target) throw new Error("Owner not found");
   if (target.isPrimary) throw new Error("Cannot remove the primary owner");
@@ -483,15 +488,15 @@ export function removeOwner(businessId: string, ownerId: string) {
   if (target.access === "equal" && equalLeft.length === 0) {
     throw new Error("Keep at least one equal owner");
   }
-  getDb().prepare("DELETE FROM business_owners WHERE id = ? AND business_id = ?").run(ownerId, businessId);
+  await getDb().prepare("DELETE FROM business_owners WHERE id = ? AND business_id = ?").run(ownerId, businessId);
   schedulePersistDb();
 }
 
-export function findMembershipByPhone(phone: string): Membership | null {
-  ensureOwnersTable();
+export async function findMembershipByPhone(phone: string): Promise<Membership | null> {
+  await ensureOwnersTable();
   const normalized = normalizePhone(phone);
 
-  const owner = getDb()
+  const owner = await getDb()
     .prepare("SELECT * FROM business_owners WHERE phone = ? LIMIT 1")
     .get(normalized) as
     | { business_id: string; name: string; phone: string; access_type: string }
@@ -505,7 +510,7 @@ export function findMembershipByPhone(phone: string): Membership | null {
     };
   }
 
-  const staffRows = getDb().prepare("SELECT * FROM staff").all() as {
+  const staffRows = await getDb().prepare("SELECT * FROM staff").all() as {
     business_id: string;
     name: string;
     phone: string;
@@ -522,12 +527,13 @@ export function findMembershipByPhone(phone: string): Membership | null {
   }
 
   // Legacy primary owner field
-  const business = listBusinesses().find((b) => normalizePhone(b.owner_whatsapp || "") === normalized);
+  const businesses = await listBusinesses();
+  const business = businesses.find((b) => normalizePhone(b.owner_whatsapp || "") === normalized);
   if (business) {
     // Ensure owner row exists for next time
-    const owners = getOwners(business.id);
+    const owners = await getOwners(business.id);
     if (owners.length === 0) {
-      getDb()
+      await getDb()
         .prepare(
           `INSERT INTO business_owners (id, business_id, name, phone, access_type, is_primary, added_at)
            VALUES (?, ?, ?, ?, 'equal', 1, ?)`,
@@ -547,8 +553,8 @@ export function findMembershipByPhone(phone: string): Membership | null {
 }
 
 /** Staff always stores name AND WhatsApp number — both required. */
-export function getStaff(businessId: string): StaffMember[] {
-  const rows = getDb()
+export async function getStaff(businessId: string): Promise<StaffMember[]> {
+  const rows = await getDb()
     .prepare("SELECT * FROM staff WHERE business_id = ? ORDER BY added_at DESC")
     .all(businessId) as { id: string; name: string; phone: string; permission: Permission; added_at: string }[];
   return rows.map((row) => ({
@@ -560,21 +566,21 @@ export function getStaff(businessId: string): StaffMember[] {
   }));
 }
 
-export function addStaff(
+export async function addStaff(
   businessId: string,
   input: { name: string; phone: string; permission: Permission },
-): StaffMember {
+): Promise<StaffMember> {
   const name = input.name.trim();
   const phone = normalizePhone(input.phone);
   if (!name) throw new Error("Name is required");
   if (!phone) throw new Error("WhatsApp number is required");
 
-  const existingMember = findMembershipByPhone(phone);
+  const existingMember = await findMembershipByPhone(phone);
   if (existingMember) throw new Error("That WhatsApp number is already on an account");
 
   const id = newId();
   const addedAt = nowIso();
-  getDb()
+  await getDb()
     .prepare(`INSERT INTO staff (id, business_id, name, phone, permission, added_at) VALUES (?, ?, ?, ?, ?, ?)`)
     .run(id, businessId, name, phone, input.permission, addedAt);
 
@@ -582,29 +588,29 @@ export function addStaff(
   return { id, name, phone, permission: input.permission, addedAt };
 }
 
-export function createAlert(
+export async function createAlert(
   businessId: string,
   input: { productId?: string | null; kind: string; title: string; body: string },
-): AlertRow {
+): Promise<AlertRow> {
   const id = newId();
   const created = nowIso();
-  getDb()
+  await getDb()
     .prepare(
       `INSERT INTO alerts (id, business_id, product_id, kind, title, body, created_at, seen)
        VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
     )
     .run(id, businessId, input.productId ?? null, input.kind, input.title, input.body, created);
-  return getDb().prepare("SELECT * FROM alerts WHERE id = ?").get(id) as AlertRow;
+  return await getDb().prepare("SELECT * FROM alerts WHERE id = ?").get(id) as AlertRow;
 }
 
-export function getAlerts(businessId: string, limit = 20): AlertRow[] {
-  return getDb()
+export async function getAlerts(businessId: string, limit = 20): Promise<AlertRow[]> {
+  return await getDb()
     .prepare("SELECT * FROM alerts WHERE business_id = ? ORDER BY created_at DESC LIMIT ?")
     .all(businessId, limit) as AlertRow[];
 }
 
-export function getTopSeller(businessId: string): { name: string; value: number } | null {
-  const row = getDb()
+export async function getTopSeller(businessId: string): Promise<{ name: string; value: number } | null> {
+  const row = await getDb()
     .prepare(
       `SELECT p.name as name, SUM(s.quantity * s.unit_price) as value
        FROM sales s JOIN products p ON p.id = s.product_id
@@ -616,8 +622,8 @@ export function getTopSeller(businessId: string): { name: string; value: number 
   return { name: row.name, value: Number(row.value) };
 }
 
-export function findProductByName(businessId: string, query: string): Product | null {
-  const products = getProducts(businessId);
+export async function findProductByName(businessId: string, query: string): Promise<Product | null> {
+  const products = await getProducts(businessId);
   const q = query.trim().toLowerCase();
   if (!q) return null;
   return (
@@ -627,33 +633,153 @@ export function findProductByName(businessId: string, query: string): Product | 
   );
 }
 
-export function findBusinessByWhatsapp(phone: string): BusinessRow | null {
-  const membership = findMembershipByPhone(phone);
+export async function findBusinessByWhatsapp(phone: string): Promise<BusinessRow | null> {
+  const membership = await findMembershipByPhone(phone);
   if (!membership) return null;
-  return getBusiness(membership.businessId);
+  return await getBusiness(membership.businessId);
 }
 
-export function runBackup(businessId: string): { path: string; at: string } {
-  const business = getBusiness(businessId);
+export type BackupHistoryEntry = {
+  id: string;
+  stampedAt: string;
+  status: "success" | "failed";
+  storagePath: string | null;
+  error: string | null;
+};
+
+export async function listBackupHistory(businessId: string, limit = 50): Promise<BackupHistoryEntry[]> {
+  await ensureDbReady();
+  const rows = (await getDb()
+    .prepare(
+      `SELECT id, stamped_at, status, storage_path, error
+       FROM backup_history
+       WHERE business_id = ?
+       ORDER BY stamped_at DESC
+       LIMIT ?`,
+    )
+    .all(businessId, limit)) as {
+    id: string;
+    stamped_at: string;
+    status: string;
+    storage_path: string | null;
+    error: string | null;
+  }[];
+
+  return rows.map((row) => ({
+    id: row.id,
+    stampedAt: row.stamped_at,
+    status: row.status === "failed" ? "failed" : "success",
+    storagePath: row.storage_path,
+    error: row.error,
+  }));
+}
+
+async function recordBackupHistory(
+  businessId: string,
+  stampedAt: string,
+  status: "success" | "failed",
+  storagePath: string | null,
+  error: string | null,
+) {
+  await getDb()
+    .prepare(
+      `INSERT INTO backup_history (id, business_id, stamped_at, status, storage_path, error)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+    .run(newId(), businessId, stampedAt, status, storagePath, error);
+  schedulePersistDb();
+}
+
+/** Full snapshot to separate storage (Vercel Blob when configured, else local backups folder). */
+export async function runBackup(businessId: string): Promise<{ path: string; at: string; status: "success" }> {
+  await ensureDbReady();
+  const business = await getBusiness(businessId);
   if (!business) throw new Error("Business not found");
+
   const at = nowIso();
   const stamp = at.replace(/[:.]/g, "-");
-  const snapshot = {
-    backedUpAt: at,
-    business,
-    products: getProducts(businessId),
-    staff: getStaff(businessId),
-    alerts: getAlerts(businessId, 100),
-    sales: getDb().prepare("SELECT * FROM sales WHERE business_id = ? ORDER BY recorded_at DESC").all(businessId),
-  };
-  const file = path.join(getBackupDir(), `${businessId}-${stamp}.json`);
-  fs.writeFileSync(file, JSON.stringify(snapshot, null, 2), "utf8");
-  fs.copyFileSync(getDbPath(), path.join(getBackupDir(), `full-${stamp}.sqlite`));
-  updateBusiness(businessId, { lastBackup: at });
-  return { path: file, at };
+  let storagePath: string | null = null;
+
+  try {
+    const snapshot = {
+      backedUpAt: at,
+      business,
+      products: await getProducts(businessId),
+      staff: await getStaff(businessId),
+      owners: await getOwners(businessId),
+      alerts: await getAlerts(businessId, 100),
+      sales: await getDb()
+        .prepare("SELECT * FROM sales WHERE business_id = ? ORDER BY recorded_at DESC")
+        .all(businessId),
+      priceHistory: await getDb()
+        .prepare("SELECT * FROM price_history WHERE business_id = ? ORDER BY recorded_at DESC")
+        .all(businessId),
+    };
+    const payload = JSON.stringify(snapshot, null, 2);
+    const objectKey = `stockpulse-backups/${businessId}/${stamp}.json`;
+
+    if (process.env.BLOB_READ_WRITE_TOKEN) {
+      const { put } = await import("@vercel/blob");
+      const blob = await put(objectKey, payload, {
+        access: "private",
+        addRandomSuffix: false,
+        allowOverwrite: true,
+        contentType: "application/json",
+        token: process.env.BLOB_READ_WRITE_TOKEN,
+      });
+      storagePath = blob.url;
+    } else {
+      const file = path.join(getBackupDir(), `${businessId}-${stamp}.json`);
+      fs.writeFileSync(file, payload, "utf8");
+      storagePath = file;
+    }
+
+    await updateBusiness(businessId, { lastBackup: at });
+    await recordBackupHistory(businessId, at, "success", storagePath, null);
+    return { path: storagePath!, at, status: "success" };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Backup failed";
+    await recordBackupHistory(businessId, at, "failed", storagePath, message);
+    throw new Error(message);
+  }
 }
 
-function seedSampleProducts(businessId: string) {
+/** Daily cron: snapshot every business into separate backup storage. */
+export async function runDailyBackups() {
+  const businesses = await listBusinesses();
+  const results: {
+    businessId: string;
+    name: string;
+    ok: boolean;
+    at?: string;
+    path?: string;
+    error?: string;
+  }[] = [];
+
+  for (const business of businesses) {
+    try {
+      const result = await runBackup(business.id);
+      results.push({
+        businessId: business.id,
+        name: business.name,
+        ok: true,
+        at: result.at,
+        path: result.path,
+      });
+    } catch (err) {
+      results.push({
+        businessId: business.id,
+        name: business.name,
+        ok: false,
+        error: err instanceof Error ? err.message : "Backup failed",
+      });
+    }
+  }
+
+  return results;
+}
+
+async function seedSampleProducts(businessId: string) {
   const samples = [
     { name: "Basmati Rice", category: "Staples", variant: "5 kg", warehouse: 48, shop: 16, online: 12, price: 2450, threshold: 20, history: [2280, 2300, 2320, 2360, 2380, 2450], photo: "/samples/rice.jpg" },
     { name: "Cooking Oil", category: "Staples", variant: "5 L", warehouse: 22, shop: 8, online: 6, price: 3180, threshold: 15, history: [2800, 2860, 2900, 2940, 2935, 3180], photo: "/samples/oil.jpg" },
@@ -672,7 +798,7 @@ function seedSampleProducts(businessId: string) {
   for (const sample of samples) {
     const id = newId();
     const created = nowIso();
-    getDb()
+    await getDb()
       .prepare(
         `INSERT INTO products
          (id, business_id, name, category, variant, warehouse_qty, shop_qty, online_qty, purchase_price, restock_threshold, photo, created_at)
@@ -693,21 +819,23 @@ function seedSampleProducts(businessId: string) {
         created,
       );
 
-    sample.history.forEach((price, index) => {
+    for (let index = 0; index < sample.history.length; index++) {
+      const price = sample.history[index];
       const recorded = new Date();
       recorded.setMonth(recorded.getMonth() - (sample.history.length - 1 - index));
       recorded.setDate(12);
-      getDb()
+      await getDb()
         .prepare(`INSERT INTO price_history (id, product_id, business_id, price, recorded_at) VALUES (?, ?, ?, ?, ?)`)
         .run(newId(), id, businessId, price, recorded.toISOString());
-    });
+    
+    }
   }
 
   // Staff: name + WhatsApp both required
-  getDb()
+  await getDb()
     .prepare(`INSERT INTO staff (id, business_id, name, phone, permission, added_at) VALUES (?, ?, ?, ?, ?, ?)`)
     .run(newId(), businessId, "Ahmed Khan", "+92 300 555 0142", "add", "2026-08-12T08:30:00.000Z");
-  getDb()
+  await getDb()
     .prepare(`INSERT INTO staff (id, business_id, name, phone, permission, added_at) VALUES (?, ?, ?, ?, ?, ?)`)
     .run(newId(), businessId, "Sara Ali", "+92 321 555 0198", "view", "2026-09-03T08:30:00.000Z");
 }
@@ -722,15 +850,15 @@ export type ShopifyConnectionRow = {
   last_sync_count: number;
 };
 
-export function getShopifyConnection(businessId: string): ShopifyConnectionRow | null {
-  const row = getDb()
+export async function getShopifyConnection(businessId: string): Promise<ShopifyConnectionRow | null> {
+  const row = await getDb()
     .prepare("SELECT * FROM business_shopify WHERE business_id = ?")
     .get(businessId) as ShopifyConnectionRow | undefined;
   return row ?? null;
 }
 
-export function getShopifyConnectionPublic(businessId: string): ShopifyConnectionPublic {
-  const row = getShopifyConnection(businessId);
+export async function getShopifyConnectionPublic(businessId: string): Promise<ShopifyConnectionPublic> {
+  const row = await getShopifyConnection(businessId);
   if (!row) {
     return {
       connected: false,
@@ -751,9 +879,9 @@ export function getShopifyConnectionPublic(businessId: string): ShopifyConnectio
   };
 }
 
-export function saveShopifyConnection(businessId: string, shopDomain: string, accessToken: string) {
+export async function saveShopifyConnection(businessId: string, shopDomain: string, accessToken: string) {
   const connectedAt = nowIso();
-  getDb()
+  await getDb()
     .prepare(
       `INSERT INTO business_shopify (business_id, shop_domain, access_token, connected_at, last_sync_at, last_sync_error, last_sync_count)
        VALUES (?, ?, ?, ?, NULL, NULL, 0)
@@ -764,29 +892,29 @@ export function saveShopifyConnection(businessId: string, shopDomain: string, ac
          last_sync_error = NULL`,
     )
     .run(businessId, shopDomain, accessToken, connectedAt);
-  updateBusiness(businessId, { connectedStores: 1 });
+  await updateBusiness(businessId, { connectedStores: 1 });
   schedulePersistDb();
-  return getShopifyConnectionPublic(businessId);
+  return await getShopifyConnectionPublic(businessId);
 }
 
-export function clearShopifyConnection(businessId: string) {
-  getDb().prepare("DELETE FROM business_shopify WHERE business_id = ?").run(businessId);
-  updateBusiness(businessId, { connectedStores: 0 });
+export async function clearShopifyConnection(businessId: string) {
+  await getDb().prepare("DELETE FROM business_shopify WHERE business_id = ?").run(businessId);
+  await updateBusiness(businessId, { connectedStores: 0 });
   schedulePersistDb();
 }
 
-export function markShopifySyncResult(
+export async function markShopifySyncResult(
   businessId: string,
   result: { ok: boolean; count: number; error?: string },
 ) {
-  getDb()
+  await getDb()
     .prepare(
       `UPDATE business_shopify
        SET last_sync_at = ?, last_sync_error = ?, last_sync_count = ?
        WHERE business_id = ?`,
     )
     .run(nowIso(), result.ok ? null : result.error || "Sync failed", result.count, businessId);
-  if (result.ok) updateBusiness(businessId, { connectedStores: 1 });
+  if (result.ok) await updateBusiness(businessId, { connectedStores: 1 });
   schedulePersistDb();
 }
 
@@ -800,9 +928,9 @@ export type ShopifySyncItem = {
 };
 
 /** One-way pull: create/update products and set online qty from Shopify. */
-export function applyShopifyProductSync(businessId: string, items: ShopifySyncItem[]) {
-  clearSampleInventory(businessId);
-  const existing = getDb()
+export async function applyShopifyProductSync(businessId: string, items: ShopifySyncItem[]) {
+  await clearSampleInventory(businessId);
+  const existing = await getDb()
     .prepare("SELECT * FROM products WHERE business_id = ?")
     .all(businessId) as Record<string, unknown>[];
 
@@ -817,7 +945,7 @@ export function applyShopifyProductSync(businessId: string, items: ShopifySyncIt
     const match = byVariant || byName;
 
     if (match) {
-      getDb()
+      await getDb()
         .prepare(
           `UPDATE products
            SET online_qty = ?, shopify_variant_id = ?, category = COALESCE(NULLIF(category, ''), ?)
@@ -833,7 +961,7 @@ export function applyShopifyProductSync(businessId: string, items: ShopifySyncIt
     const id = newId();
     const created = nowIso();
     const threshold = Math.max(1, Math.round(item.onlineQty * 0.3) || 1);
-    getDb()
+    await getDb()
       .prepare(
         `INSERT INTO products
          (id, business_id, name, category, variant, warehouse_qty, shop_qty, online_qty, purchase_price, restock_threshold, photo, created_at, shopify_variant_id)
@@ -852,7 +980,7 @@ export function applyShopifyProductSync(businessId: string, items: ShopifySyncIt
         item.shopifyVariantId,
       );
     if (item.purchasePrice > 0) {
-      getDb()
+      await getDb()
         .prepare(`INSERT INTO price_history (id, product_id, business_id, price, recorded_at) VALUES (?, ?, ?, ?, ?)`)
         .run(newId(), id, businessId, item.purchasePrice, created);
     }
@@ -870,24 +998,25 @@ export function applyShopifyProductSync(businessId: string, items: ShopifySyncIt
   return upserted;
 }
 
-export function buildBusinessState(businessId: string) {
-  const business = getBusiness(businessId);
+export async function buildBusinessState(businessId: string) {
+  const business = await getBusiness(businessId);
   if (!business) return null;
-  ensureOwnersTable();
+  await ensureOwnersTable();
   return {
     id: business.id,
     onboarded: true,
     businessName: business.name,
     language: business.language,
-    products: getProducts(businessId),
-    staff: getStaff(businessId),
-    owners: getOwners(businessId),
+    products: await getProducts(businessId),
+    staff: await getStaff(businessId),
+    owners: await getOwners(businessId),
     lastBackup: business.last_backup,
+    backupHistory: await listBackupHistory(businessId, 50),
     connectedStores: business.connected_stores,
     ownerWhatsapp: business.owner_whatsapp,
     priceThreshold: business.price_threshold,
-    alerts: getAlerts(businessId, 10),
+    alerts: await getAlerts(businessId, 10),
     isSample: Boolean(business.is_sample),
-    shopify: getShopifyConnectionPublic(businessId),
+    shopify: await getShopifyConnectionPublic(businessId),
   };
 }

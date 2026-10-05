@@ -74,10 +74,19 @@ export type AppState = {
   staff: StaffMember[];
   owners: BusinessOwner[];
   lastBackup: string | null;
+  backupHistory: BackupHistoryItem[];
   connectedStores: number;
   ownerWhatsapp: string | null;
   priceThreshold: number;
   alerts: AlertItem[];
   isSample?: boolean;
   shopify?: ShopifyConnectionPublic;
+};
+
+export type BackupHistoryItem = {
+  id: string;
+  stampedAt: string;
+  status: "success" | "failed";
+  storagePath: string | null;
+  error: string | null;
 };

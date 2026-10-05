@@ -5,6 +5,10 @@
     {
       "path": "/api/cron/monthly-chart",
       "schedule": "5 17 28-31 * *"
+    },
+    {
+      "path": "/api/cron/daily-backup",
+      "schedule": "15 2 * * *"
     }
   ]
 }

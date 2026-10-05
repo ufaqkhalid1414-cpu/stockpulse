@@ -11,6 +11,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "@vercel/blob": "^2.8.0",
     "framer-motion": "^12.23.22",
     "next": "^15.5.4",

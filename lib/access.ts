@@ -63,12 +63,12 @@ export function homePathForRole(role: AccessRole) {
 }
 
 export async function requireAccess(): Promise<AccessContext | null> {
-  ensureOwnersTable();
+  await ensureOwnersTable();
   const session = await getSession();
   if (!session?.businessId) return null;
-  const business = getBusiness(session.businessId);
+  const business = await getBusiness(session.businessId);
   if (!business) return null;
-  const membership = findMembershipByPhone(session.phone);
+  const membership = await findMembershipByPhone(session.phone);
   if (!membership || membership.businessId !== business.id) return null;
   return { session, business, role: membership.role, membership };
 }

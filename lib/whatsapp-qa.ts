@@ -14,7 +14,7 @@ function qtyLine(lang: Lang, warehouse: number, shop: number, online: number) {
   return `Warehouse: ${warehouse}, Shop: ${shop}, Online: ${online}`;
 }
 
-export function answerWhatsAppQuestion(business: BusinessRow, raw: string): string {
+export async function answerWhatsAppQuestion(business: BusinessRow, raw: string): Promise<string> {
   const text = raw.trim().replace(/\s+/g, " ");
   const lower = text.toLowerCase();
   const lang = business.language;
@@ -30,11 +30,11 @@ export function answerWhatsAppQuestion(business: BusinessRow, raw: string): stri
     name = name.replace(/^(of|for)\s+/i, "").replace(/[?؟!.]+$/, "").trim();
     if (!name) {
       // try pull product name from free text
-      const products = getProducts(business.id);
+      const products = await getProducts(business.id);
       const hit = products.find((p) => lower.includes(p.name.toLowerCase()));
       if (hit) name = hit.name;
     }
-    const product = name ? findProductByName(business.id, name) : null;
+    const product = name ? await findProductByName(business.id, name) : null;
     if (!product) {
       return lang === "ur"
         ? "مجھے وہ چیز نہیں ملی۔ نام دوبارہ بھیجیں، مثلاً: Basmati Rice stock kitna hai?"
@@ -53,7 +53,7 @@ export function answerWhatsAppQuestion(business: BusinessRow, raw: string): stri
       lower,
     )
   ) {
-    const top = getTopSeller(business.id);
+    const top = await getTopSeller(business.id);
     if (!top) {
       return lang === "ur"
         ? "ابھی فروخت کا کافی ڈیٹا نہیں ہے۔ جب آپ فروخت ریکارڈ کریں گے، میں بتا سکوں گا۔"

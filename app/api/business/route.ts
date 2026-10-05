@@ -36,7 +36,7 @@ export async function GET() {
         business: null,
       });
     }
-    const membership = findMembershipByPhone(session.phone);
+    const membership = await findMembershipByPhone(session.phone);
     if (!membership || membership.businessId !== session.businessId) {
       return NextResponse.json({
         authenticated: true,
@@ -47,7 +47,7 @@ export async function GET() {
         business: null,
       });
     }
-    const state = buildBusinessState(session.businessId);
+    const state = await buildBusinessState(session.businessId);
     if (!state) {
       return NextResponse.json({
         authenticated: true,
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
           { status: 403 },
         );
       }
-      deleteBusiness(ctx.business.id);
+      await deleteBusiness(ctx.business.id);
       await destroySession();
       await persistDb();
       return NextResponse.json({ authenticated: false, business: null });
@@ -109,7 +109,7 @@ export async function POST(request: Request) {
 
     // Staff/owners already on a business cannot create another
     if (session.businessId) {
-      const membership = findMembershipByPhone(session.phone);
+      const membership = await findMembershipByPhone(session.phone);
       if (membership) {
         return NextResponse.json({ error: "You already have an account on this login" }, { status: 409 });
       }
@@ -120,7 +120,7 @@ export async function POST(request: Request) {
     }
 
     const name = (body.name || "").trim() || "General Store";
-    const created = createBusiness({
+    const created = await createBusiness({
       name,
       language: body.language ?? "en",
       ownerWhatsapp: session.phone,
@@ -134,7 +134,7 @@ export async function POST(request: Request) {
       phone: session.phone,
       role: "equal_owner",
       homePath: "/dashboard",
-      business: buildBusinessState(created.id),
+      business: await buildBusinessState(created.id),
     });
   } catch (err) {
     console.error("[api/business POST]", err);

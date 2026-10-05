@@ -78,6 +78,7 @@ function toState(business: ApiBusiness | null | undefined): AppState {
     staff: business.staff ?? [],
     owners: business.owners ?? [],
     lastBackup: business.lastBackup ?? null,
+    backupHistory: business.backupHistory ?? [],
     connectedStores: business.connectedStores ?? 0,
     ownerWhatsapp: business.ownerWhatsapp ?? null,
     priceThreshold: business.priceThreshold ?? 10,

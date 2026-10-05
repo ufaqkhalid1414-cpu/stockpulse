@@ -24,10 +24,10 @@ export async function writeMonthlyPriceChart(
   appBaseUrl?: string,
   options?: { months?: number },
 ) {
-  const product = getProduct(businessId, productId);
+  const product = await getProduct(businessId, productId);
   if (!product) return null;
 
-  const points = getMonthlyPurchasePrices(productId, businessId, options?.months ?? 6);
+  const points = await getMonthlyPurchasePrices(productId, businessId, options?.months ?? 6);
   if (points.length === 0) return null;
 
   return writeChartSvg({
@@ -43,14 +43,14 @@ export async function writeWeeklyPriceChart(businessId: string, productId: strin
   return writeMonthlyPriceChart(businessId, productId, appBaseUrl);
 }
 
-export function biggestRecentMove(businessId: string, productIds: string[]) {
+export async function biggestRecentMove(businessId: string, productIds: string[]) {
   let best: { name: string; pct: number } | null = null;
   for (const id of productIds) {
-    const prices = getRecentPurchasePrices(id, businessId, 2);
+    const prices = await getRecentPurchasePrices(id, businessId, 2);
     if (prices.length < 2 || prices[0] === 0) continue;
     const pct = ((prices[1] - prices[0]) / prices[0]) * 100;
     if (!best || Math.abs(pct) > Math.abs(best.pct)) {
-      const product = getProduct(businessId, id);
+      const product = await getProduct(businessId, id);
       if (product) best = { name: product.name, pct };
     }
   }
@@ -66,17 +66,19 @@ export async function sendMonthlyChartsForAllBusinesses(appBaseUrl: string) {
     skipped: string | null;
   }[] = [];
 
-  for (const business of listBusinesses()) {
-    const ownerPhones = getOwnerPhones(business.id);
+  for (const business of await listBusinesses()) {
+    const ownerPhones = await getOwnerPhones(business.id);
     if (ownerPhones.length === 0) {
       results.push({ businessId: business.id, name: business.name, sent: 0, skipped: "no owners" });
       continue;
     }
 
-    const products = getProducts(business.id).filter((p) => {
-      const months = getMonthlyPurchasePrices(p.id, business.id, 2);
-      return months.length >= 1;
-    });
+    const allProducts = await getProducts(business.id);
+    const products = [];
+    for (const p of allProducts) {
+      const months = await getMonthlyPurchasePrices(p.id, business.id, 2);
+      if (months.length >= 1) products.push(p);
+    }
 
     if (products.length === 0) {
       results.push({ businessId: business.id, name: business.name, sent: 0, skipped: "no purchase history" });
@@ -84,13 +86,15 @@ export async function sendMonthlyChartsForAllBusinesses(appBaseUrl: string) {
     }
 
     // Prefer products that have both this month and last month of data; cap to avoid spam
-    const ranked = products
-      .map((p) => ({ product: p, months: getMonthlyPurchasePrices(p.id, business.id, 2) }))
-      .sort((a, b) => b.months.length - a.months.length)
-      .slice(0, 5);
+    const ranked = [];
+    for (const p of products) {
+      ranked.push({ product: p, months: await getMonthlyPurchasePrices(p.id, business.id, 2) });
+    }
+    ranked.sort((a, b) => b.months.length - a.months.length);
+    const top = ranked.slice(0, 5);
 
     let sent = 0;
-    for (const { product } of ranked) {
+    for (const { product } of top) {
       const media = await writeMonthlyPriceChart(business.id, product.id, appBaseUrl);
       if (!media) continue;
       const url = media.startsWith("http") ? media : `${appBaseUrl.replace(/\/$/, "")}${media}`;

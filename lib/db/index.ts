@@ -1,123 +1,82 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { DatabaseSync } from "node:sqlite";
+import { createClient, type Client, type InArgs } from "@libsql/client";
 
-function resolveDataDir() {
-  // Vercel serverless only allows writes under /tmp (see Vercel KB on SQLite).
-  if (process.env.VERCEL) return path.join(os.tmpdir(), "stockpulse");
-  return path.join(process.cwd(), "data");
-}
+export type SqlArg = string | number | null | boolean | Uint8Array | bigint;
 
-const DATA_DIR = resolveDataDir();
-const DB_PATH = path.join(DATA_DIR, "stockpulse.sqlite");
-const BACKUP_DIR = path.join(DATA_DIR, "backups");
-const BLOB_PATHNAME = "stockpulse-data/stockpulse.sqlite";
+type Stmt = {
+  get: <T = Record<string, unknown>>(...args: SqlArg[]) => Promise<T | undefined>;
+  all: <T = Record<string, unknown>>(...args: SqlArg[]) => Promise<T[]>;
+  run: (...args: SqlArg[]) => Promise<{ changes: number }>;
+};
 
-let db: DatabaseSync | null = null;
-let hydratePromise: Promise<void> | null = null;
+export type AppDb = {
+  exec: (sql: string) => Promise<void>;
+  prepare: (sql: string) => Stmt;
+};
+
+const BLOB_DB_PATHNAME = "stockpulse-db/live.sqlite";
+
+let client: Client | null = null;
+let readyPromise: Promise<void> | null = null;
+let appDb: AppDb | null = null;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let persistInFlight: Promise<void> | null = null;
 
-export function getDb(): DatabaseSync {
-  if (db) return db;
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
-  db = new DatabaseSync(DB_PATH);
-  db.exec("PRAGMA foreign_keys = ON;");
-  migrate(db);
-  // Auth tables (OTP + sessions) — safe to create on every open
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS otp_codes (
-      id TEXT PRIMARY KEY,
-      phone TEXT NOT NULL,
-      code_hash TEXT NOT NULL,
-      expires_at TEXT NOT NULL,
-      attempts INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_otp_phone ON otp_codes(phone);
-    CREATE TABLE IF NOT EXISTS sessions (
-      id TEXT PRIMARY KEY,
-      token_hash TEXT NOT NULL UNIQUE,
-      business_id TEXT,
-      phone TEXT NOT NULL,
-      expires_at TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash);
-    CREATE INDEX IF NOT EXISTS idx_sessions_phone ON sessions(phone);
-  `);
-  return db;
+function dataRoot() {
+  return process.env.VERCEL
+    ? path.join(os.tmpdir(), "stockpulse")
+    : path.join(process.cwd(), "data");
 }
 
-/** Load durable SQLite from Vercel Blob (when configured) before serving requests. */
-export async function ensureDbReady() {
-  if (!hydratePromise) {
-    hydratePromise = (async () => {
-      if (process.env.VERCEL && process.env.BLOB_READ_WRITE_TOKEN && !fs.existsSync(DB_PATH)) {
-        try {
-          const { list } = await import("@vercel/blob");
-          const { blobs } = await list({ prefix: "stockpulse-data/", limit: 10 });
-          const match = blobs.find((b) => b.pathname === BLOB_PATHNAME) || blobs[0];
-          if (match?.url) {
-            const res = await fetch(match.url, {
-              headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}` },
-            });
-            if (res.ok) {
-              if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-              const buf = Buffer.from(await res.arrayBuffer());
-              fs.writeFileSync(DB_PATH, buf);
-            }
-          }
-        } catch (err) {
-          console.error("[db] blob hydrate failed", err);
-        }
-      }
-      getDb();
-    })();
-  }
-  await hydratePromise;
-  return getDb();
+function resolveLocalFileUrl() {
+  const dataDir = dataRoot();
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  const filePath = path.join(dataDir, "stockpulse.sqlite");
+  return `file:${filePath.replace(/\\/g, "/")}`;
 }
 
-/** Persist SQLite to Vercel Blob so pilot data survives cold starts. */
-export async function persistDb() {
-  if (!process.env.VERCEL || !process.env.BLOB_READ_WRITE_TOKEN) return;
-  try {
-    const { put } = await import("@vercel/blob");
-    if (!fs.existsSync(DB_PATH)) return;
-    const buf = fs.readFileSync(DB_PATH);
-    await put(BLOB_PATHNAME, buf, {
-      access: "public",
-      addRandomSuffix: false,
-      allowOverwrite: true,
-      contentType: "application/x-sqlite3",
-      token: process.env.BLOB_READ_WRITE_TOKEN,
+function createDbClient(): Client {
+  const tursoUrl = process.env.TURSO_DATABASE_URL?.trim();
+  const tursoToken = process.env.TURSO_AUTH_TOKEN?.trim();
+  if (tursoUrl) {
+    return createClient({
+      url: tursoUrl,
+      authToken: tursoToken,
     });
-  } catch (err) {
-    console.error("[db] blob persist failed", err);
   }
+  return createClient({
+    url: resolveLocalFileUrl(),
+  });
 }
 
-/** Debounced persist after writes (many inserts in one request → one upload). */
-export function schedulePersistDb() {
-  if (!process.env.VERCEL || !process.env.BLOB_READ_WRITE_TOKEN) return;
-  if (persistTimer) clearTimeout(persistTimer);
-  persistTimer = setTimeout(() => {
-    void persistDb();
-  }, 50);
+function wrapClient(c: Client): AppDb {
+  return {
+    async exec(sql: string) {
+      await c.executeMultiple(sql);
+    },
+    prepare(sql: string): Stmt {
+      return {
+        async get<T>(...args: SqlArg[]) {
+          const rs = await c.execute({ sql, args: args as InArgs });
+          return (rs.rows[0] as T | undefined) ?? undefined;
+        },
+        async all<T>(...args: SqlArg[]) {
+          const rs = await c.execute({ sql, args: args as InArgs });
+          return rs.rows as T[];
+        },
+        async run(...args: SqlArg[]) {
+          const rs = await c.execute({ sql, args: args as InArgs });
+          return { changes: Number(rs.rowsAffected ?? 0) };
+        },
+      };
+    },
+  };
 }
 
-export function getBackupDir() {
-  return BACKUP_DIR;
-}
-
-export function getDbPath() {
-  return DB_PATH;
-}
-
-function migrate(database: DatabaseSync) {
-  database.exec(`
+async function migrate(db: AppDb) {
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS businesses (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -143,6 +102,7 @@ function migrate(database: DatabaseSync) {
       restock_threshold REAL NOT NULL DEFAULT 1,
       photo TEXT,
       created_at TEXT NOT NULL,
+      shopify_variant_id TEXT,
       FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
     );
 
@@ -201,23 +161,197 @@ function migrate(database: DatabaseSync) {
       FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS business_owners (
+      id TEXT PRIMARY KEY,
+      business_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      access_type TEXT NOT NULL DEFAULT 'equal',
+      is_primary INTEGER NOT NULL DEFAULT 0,
+      added_at TEXT NOT NULL,
+      FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS otp_codes (
+      id TEXT PRIMARY KEY,
+      phone TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      token_hash TEXT NOT NULL UNIQUE,
+      business_id TEXT,
+      phone TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS backup_history (
+      id TEXT PRIMARY KEY,
+      business_id TEXT NOT NULL,
+      stamped_at TEXT NOT NULL,
+      status TEXT NOT NULL,
+      storage_path TEXT,
+      error TEXT,
+      FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS otp_requests (
+      id TEXT PRIMARY KEY,
+      phone TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_products_business ON products(business_id);
     CREATE INDEX IF NOT EXISTS idx_staff_business ON staff(business_id);
     CREATE INDEX IF NOT EXISTS idx_price_business ON price_history(business_id);
     CREATE INDEX IF NOT EXISTS idx_sales_business ON sales(business_id);
     CREATE INDEX IF NOT EXISTS idx_alerts_business ON alerts(business_id);
+    CREATE INDEX IF NOT EXISTS idx_otp_phone ON otp_codes(phone);
+    CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash);
+    CREATE INDEX IF NOT EXISTS idx_sessions_phone ON sessions(phone);
+    CREATE INDEX IF NOT EXISTS idx_backup_business ON backup_history(business_id);
+    CREATE INDEX IF NOT EXISTS idx_owners_business ON business_owners(business_id);
+    CREATE INDEX IF NOT EXISTS idx_otp_requests_phone ON otp_requests(phone);
   `);
 
-  // Older DBs created before is_sample existed
-  const cols = database.prepare("PRAGMA table_info(businesses)").all() as { name: string }[];
-  if (!cols.some((c) => c.name === "is_sample")) {
-    database.exec("ALTER TABLE businesses ADD COLUMN is_sample INTEGER NOT NULL DEFAULT 0");
+  try {
+    await db.exec("ALTER TABLE businesses ADD COLUMN is_sample INTEGER NOT NULL DEFAULT 0");
+  } catch {
+    /* exists */
   }
+  try {
+    await db.exec("ALTER TABLE products ADD COLUMN shopify_variant_id TEXT");
+  } catch {
+    /* exists */
+  }
+}
 
-  const productCols = database.prepare("PRAGMA table_info(products)").all() as { name: string }[];
-  if (!productCols.some((c) => c.name === "shopify_variant_id")) {
-    database.exec("ALTER TABLE products ADD COLUMN shopify_variant_id TEXT");
+/** True when using hosted Turso (not a local file DB). */
+export function usingTurso() {
+  return Boolean(process.env.TURSO_DATABASE_URL?.trim());
+}
+
+function blobConfigured() {
+  return Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim());
+}
+
+/** Durable away from the live DB process: Turso itself, or Blob-backed local file on Vercel. */
+export function databaseIsDurable() {
+  if (usingTurso()) return true;
+  if (process.env.VERCEL && blobConfigured()) return true;
+  return !process.env.VERCEL;
+}
+
+async function hydrateLocalFileFromBlob() {
+  if (usingTurso() || !process.env.VERCEL || !blobConfigured()) return;
+  const filePath = getDbPath();
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+  try {
+    const { get } = await import("@vercel/blob");
+    const result = await get(BLOB_DB_PATHNAME, {
+      access: "private",
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    });
+    if (!result || result.statusCode !== 200 || !result.stream) return;
+
+    const buf = Buffer.from(await new Response(result.stream).arrayBuffer());
+    if (buf.length > 0) {
+      fs.writeFileSync(filePath, buf);
+      console.info("[db] hydrated local sqlite from Vercel Blob", buf.length, "bytes");
+    }
+  } catch (err) {
+    console.warn("[db] blob hydrate skipped", err instanceof Error ? err.message : err);
   }
+}
+
+async function flushLocalDbToBlob() {
+  if (usingTurso() || !blobConfigured()) return;
+  // On Vercel this is required for durability; locally it's optional backup of the file DB.
+  if (!process.env.VERCEL && process.env.BLOB_SYNC_LOCAL !== "1") return;
+
+  const filePath = getDbPath();
+  if (!fs.existsSync(filePath)) return;
+
+  try {
+    const { put } = await import("@vercel/blob");
+    const body = fs.readFileSync(filePath);
+    await put(BLOB_DB_PATHNAME, body, {
+      access: "private",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      contentType: "application/x-sqlite3",
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    });
+  } catch (err) {
+    console.error("[db] blob flush failed", err);
+    throw err;
+  }
+}
+
+export async function ensureDbReady() {
+  if (!readyPromise) {
+    readyPromise = (async () => {
+      if (!usingTurso()) {
+        await hydrateLocalFileFromBlob();
+      }
+      client = createDbClient();
+      appDb = wrapClient(client);
+      await migrate(appDb);
+    })();
+  }
+  await readyPromise;
+  return getDb();
+}
+
+export function getDb(): AppDb {
+  if (!appDb) {
+    throw new Error("Database not ready — call await ensureDbReady() first");
+  }
+  return appDb;
+}
+
+export function getLibsqlClient(): Client {
+  if (!client) throw new Error("Database not ready — call await ensureDbReady() first");
+  return client;
+}
+
+/** Flush local file DB to Vercel Blob when not on Turso. Turso needs no flush. */
+export async function persistDb() {
+  if (usingTurso()) return;
+  if (persistInFlight) {
+    await persistInFlight;
+    return;
+  }
+  persistInFlight = flushLocalDbToBlob().finally(() => {
+    persistInFlight = null;
+  });
+  await persistInFlight;
+}
+
+export function schedulePersistDb() {
+  if (usingTurso()) return;
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    void persistDb().catch((err) => console.error("[db] scheduled persist failed", err));
+  }, 400);
+}
+
+export function getBackupDir() {
+  const dir = path.join(dataRoot(), "backups");
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+export function getDbPath() {
+  return path.join(dataRoot(), "stockpulse.sqlite");
 }
 
 export function newId() {

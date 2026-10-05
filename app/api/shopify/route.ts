@@ -19,8 +19,8 @@ export async function GET() {
   const ctx = await requireOwnerAccess();
   if (!ctx) return NextResponse.json({ error: "Please log in as an owner" }, { status: 403 });
   return NextResponse.json({
-    shopify: getShopifyConnectionPublic(ctx.business.id),
-    business: buildBusinessState(ctx.business.id),
+    shopify: await getShopifyConnectionPublic(ctx.business.id),
+    business: await buildBusinessState(ctx.business.id),
   });
 }
 
@@ -44,27 +44,27 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Paste your Shopify Admin API access token" }, { status: 400 });
       }
       await testShopifyConnection(shopDomain, accessToken);
-      const shopify = saveShopifyConnection(ctx.business.id, shopDomain, accessToken);
+      const shopify = await saveShopifyConnection(ctx.business.id, shopDomain, accessToken);
       await persistDb();
       return NextResponse.json({
         ok: true,
         shopify,
-        business: buildBusinessState(ctx.business.id),
+        business: await buildBusinessState(ctx.business.id),
       });
     }
 
     if (action === "disconnect") {
-      clearShopifyConnection(ctx.business.id);
+      await clearShopifyConnection(ctx.business.id);
       await persistDb();
       return NextResponse.json({
         ok: true,
-        shopify: getShopifyConnectionPublic(ctx.business.id),
-        business: buildBusinessState(ctx.business.id),
+        shopify: await getShopifyConnectionPublic(ctx.business.id),
+        business: await buildBusinessState(ctx.business.id),
       });
     }
 
     if (action === "sync") {
-      const conn = getShopifyConnection(ctx.business.id);
+      const conn = await getShopifyConnection(ctx.business.id);
       if (!conn) {
         return NextResponse.json(
           { error: "Connect a Shopify store first (domain + Admin API token)" },
@@ -73,24 +73,24 @@ export async function POST(request: Request) {
       }
       try {
         const items = await fetchShopifyCatalog(conn.shop_domain, conn.access_token);
-        const count = applyShopifyProductSync(ctx.business.id, items);
-        markShopifySyncResult(ctx.business.id, { ok: true, count });
+        const count = await applyShopifyProductSync(ctx.business.id, items);
+        await markShopifySyncResult(ctx.business.id, { ok: true, count });
         await persistDb();
         return NextResponse.json({
           ok: true,
           count,
-          shopify: getShopifyConnectionPublic(ctx.business.id),
-          business: buildBusinessState(ctx.business.id),
+          shopify: await getShopifyConnectionPublic(ctx.business.id),
+          business: await buildBusinessState(ctx.business.id),
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Shopify sync failed";
-        markShopifySyncResult(ctx.business.id, { ok: false, count: 0, error: message });
+        await markShopifySyncResult(ctx.business.id, { ok: false, count: 0, error: message });
         await persistDb();
         return NextResponse.json(
           {
             error: message,
-            shopify: getShopifyConnectionPublic(ctx.business.id),
-            business: buildBusinessState(ctx.business.id),
+            shopify: await getShopifyConnectionPublic(ctx.business.id),
+            business: await buildBusinessState(ctx.business.id),
           },
           { status: 400 },
         );
