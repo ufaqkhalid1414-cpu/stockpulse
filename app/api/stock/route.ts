@@ -10,12 +10,22 @@ import {
   requireOwnerAccess,
 } from "@/lib/access";
 import { ensureDbReady, persistDb } from "@/lib/db";
+import { actorFromAccess, recordActivity, type ActivityInput } from "@/lib/db/activity";
+
+async function safeRecordActivity(businessId: string, input: ActivityInput) {
+  try {
+    await recordActivity(businessId, input);
+  } catch (err) {
+    console.error("[activity] failed to write history after successful change", err);
+  }
+}
 import {
   addOwner,
   addProduct,
   addStaff,
   buildBusinessState,
   getOwnerPhones,
+  getOwners,
   recordPurchasePrice,
   recordSale,
   removeOwner,
@@ -65,12 +75,40 @@ export async function PATCH(request: Request) {
   if (data.ownerWhatsapp !== undefined && ctx.role !== "equal_owner") {
     return forbidden("Only equal owners can change the primary WhatsApp number");
   }
+  const before = ctx.business;
   await updateBusiness(ctx.business.id, {
     name: data.name,
     language: data.language,
     priceThreshold: data.priceThreshold,
     ownerWhatsapp: data.ownerWhatsapp === undefined ? undefined : data.ownerWhatsapp,
   });
+  const changes: string[] = [];
+  if (data.name !== undefined && data.name.trim() !== before.name) {
+    changes.push(`Business name: "${before.name}" → "${data.name.trim()}"`);
+  }
+  if (data.language !== undefined && data.language !== before.language) {
+    changes.push(`Language: ${before.language} → ${data.language}`);
+  }
+  if (data.priceThreshold !== undefined && data.priceThreshold !== before.price_threshold) {
+    changes.push(`Price alert threshold: ${before.price_threshold}% → ${data.priceThreshold}%`);
+  }
+  if (data.ownerWhatsapp !== undefined) {
+    const next = data.ownerWhatsapp;
+    if (next !== before.owner_whatsapp) {
+      changes.push(`Primary WhatsApp: ${before.owner_whatsapp || "—"} → ${next || "—"}`);
+    }
+  }
+  if (changes.length > 0) {
+    await safeRecordActivity(ctx.business.id, {
+      category: "settings",
+      action: "settings_changed",
+      actor: actorFromAccess(ctx),
+      summary: "Changed business settings",
+      detail: changes.join("; "),
+      previousValue: data.priceThreshold !== undefined ? before.price_threshold : null,
+      newValue: data.priceThreshold !== undefined ? data.priceThreshold : null,
+    });
+  }
   await persistDb();
   return NextResponse.json({ business: await buildBusinessState(ctx.business.id), role: ctx.role });
 }
@@ -85,7 +123,17 @@ export async function POST(request: Request) {
   try {
     if (action === "addProduct") {
       if (!canAddProduct(ctx.role)) return forbidden("View-only staff cannot add products");
-      const product = await addProduct(ctx.business.id, {
+      const rawThreshold = body.restockThreshold;
+      const parsedThreshold =
+        rawThreshold === undefined || rawThreshold === null || String(rawThreshold).trim() === ""
+          ? undefined
+          : Number(rawThreshold);
+      const rawPpc = body.piecesPerCarton;
+      const parsedPpc =
+        rawPpc === undefined || rawPpc === null || String(rawPpc).trim() === ""
+          ? null
+          : Number(rawPpc);
+      const { product, audit } = await addProduct(ctx.business.id, {
         name: String(body.name || ""),
         category: String(body.category || ""),
         variant: String(body.variant || ""),
@@ -93,6 +141,23 @@ export async function POST(request: Request) {
         quantity: Number(body.quantity),
         purchasePrice: Number(body.purchasePrice),
         photo: body.photo ? String(body.photo) : undefined,
+        restockThreshold: parsedThreshold,
+        piecesPerCarton: parsedPpc,
+      });
+      await safeRecordActivity(ctx.business.id, {
+        category: "products",
+        action: "product_added",
+        actor: actorFromAccess(ctx),
+        productId: product.id,
+        productName: product.name,
+        location: audit.location,
+        quantityChange: audit.quantityAdded,
+        previousValue: audit.previousLocationQty,
+        newValue: audit.newLocationQty,
+        previousTotal: audit.previousTotal,
+        newTotal: audit.newTotal,
+        summary: `Added product ${product.name}`,
+        detail: `Stock +${audit.quantityAdded} at ${audit.location}; purchase price ${audit.purchasePrice}; low-stock threshold ${audit.restockThreshold}`,
       });
       await persistDb();
       return NextResponse.json({ product, business: await buildBusinessState(ctx.business.id), role: ctx.role });
@@ -105,6 +170,13 @@ export async function POST(request: Request) {
         phone: String(body.phone || ""),
         permission: (body.permission as Permission) || "view",
       });
+      await safeRecordActivity(ctx.business.id, {
+        category: "staff",
+        action: "staff_added",
+        actor: actorFromAccess(ctx),
+        summary: `Added staff ${staff.name}`,
+        detail: `Permission: ${staff.permission === "add" ? "can add stock" : "view only"}; WhatsApp ${staff.phone}`,
+      });
       await persistDb();
       return NextResponse.json({ staff, business: await buildBusinessState(ctx.business.id), role: ctx.role });
     }
@@ -116,35 +188,101 @@ export async function POST(request: Request) {
         phone: String(body.phone || ""),
         access: (body.access as OwnerAccess) === "co" ? "co" : "equal",
       });
+      await safeRecordActivity(ctx.business.id, {
+        category: "staff",
+        action: "owner_added",
+        actor: actorFromAccess(ctx),
+        summary: `Added owner ${owner.name}`,
+        detail: `Access: ${owner.access === "co" ? "co-owner" : "equal owner"}; WhatsApp ${owner.phone}`,
+      });
       await persistDb();
       return NextResponse.json({ owner, business: await buildBusinessState(ctx.business.id), role: ctx.role });
     }
 
     if (action === "removeOwner") {
       if (!canManageOwners(ctx.role)) return forbidden("Only equal owners can remove owners");
-      await removeOwner(ctx.business.id, String(body.ownerId || ""));
+      const ownerId = String(body.ownerId || "");
+      const existing = (await getOwners(ctx.business.id)).find((o) => o.id === ownerId);
+      await removeOwner(ctx.business.id, ownerId);
+      if (existing) {
+        await safeRecordActivity(ctx.business.id, {
+          category: "staff",
+          action: "owner_removed",
+          actor: actorFromAccess(ctx),
+          summary: `Removed owner ${existing.name}`,
+          detail: `WhatsApp ${existing.phone}`,
+        });
+      }
       await persistDb();
       return NextResponse.json({ business: await buildBusinessState(ctx.business.id), role: ctx.role });
     }
 
     if (action === "recordSale") {
       if (!canAccessPrices(ctx.role)) return forbidden();
-      const product = await recordSale(ctx.business.id, {
+      const { product, alert, audit } = await recordSale(ctx.business.id, {
         productId: String(body.productId || ""),
         location: body.location as Location,
         quantity: Number(body.quantity),
       });
+      await safeRecordActivity(ctx.business.id, {
+        category: "stock",
+        action: "stock_deducted",
+        actor: actorFromAccess(ctx),
+        productId: audit.productId,
+        productName: audit.productName,
+        location: audit.location,
+        quantityChange: -audit.quantity,
+        previousValue: audit.previousLocationQty,
+        newValue: audit.newLocationQty,
+        previousTotal: audit.previousTotal,
+        newTotal: audit.newTotal,
+        summary: `Deducted ${audit.quantity} ${audit.productName}`,
+        detail: `${audit.location}: ${audit.previousLocationQty} → ${audit.newLocationQty}; total ${audit.previousTotal} → ${audit.newTotal}`,
+      });
+      let whatsappError: string | null = null;
+      if (alert) {
+        const ownerPhones = await getOwnerPhones(ctx.business.id);
+        for (const to of ownerPhones) {
+          try {
+            const sent = await sendWhatsApp(to, `${alert.title}\n${alert.body}`);
+            if (sent.skipped) {
+              whatsappError = "Sale saved. WhatsApp low-stock alert was not sent — Twilio is not configured.";
+            }
+          } catch (err) {
+            whatsappError =
+              err instanceof Error ? err.message : "Sale saved, but WhatsApp low-stock alert failed to send.";
+          }
+        }
+      }
       await persistDb();
-      return NextResponse.json({ product, business: await buildBusinessState(ctx.business.id), role: ctx.role });
+      return NextResponse.json({
+        product,
+        alert,
+        business: await buildBusinessState(ctx.business.id),
+        role: ctx.role,
+        twilioConfigured: twilioConfigured(),
+        whatsappError,
+      });
     }
 
     if (action === "recordPurchasePrice") {
       if (!canAccessPrices(ctx.role)) return forbidden();
-      const { product, alert } = await recordPurchasePrice(
+      const { product, alert, audit } = await recordPurchasePrice(
         ctx.business.id,
         String(body.productId || ""),
         Number(body.price),
       );
+      await safeRecordActivity(ctx.business.id, {
+        category: "prices",
+        action: "purchase_price_changed",
+        actor: actorFromAccess(ctx),
+        productId: audit.productId,
+        productName: audit.productName,
+        previousValue: audit.previousPrice,
+        newValue: audit.newPrice,
+        summary: `Changed purchase price of ${audit.productName}`,
+        detail: `${audit.previousPrice} → ${audit.newPrice} (per piece)`,
+      });
       let whatsappError: string | null = null;
       if (alert) {
         const ownerPhones = await getOwnerPhones(ctx.business.id);
@@ -182,7 +320,7 @@ export async function POST(request: Request) {
       if (!canSendReports(ctx.role)) return forbidden();
       const state = (await buildBusinessState(ctx.business.id))!;
       const total = state.products.reduce((sum, p) => sum + totalQty(p) * p.purchasePrice, 0);
-      const low = state.products.filter((p) => totalQty(p) < p.restockThreshold);
+      const low = state.products.filter((p) => totalQty(p) <= p.restockThreshold);
       const move = await biggestRecentMove(
         ctx.business.id,
         state.products.map((p) => p.id),

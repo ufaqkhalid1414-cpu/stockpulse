@@ -9,7 +9,7 @@ export function stockValue(products: Product[]) {
 }
 
 export function isLow(product: Product) {
-  return totalQty(product) < product.restockThreshold;
+  return totalQty(product) <= product.restockThreshold;
 }
 
 export function priceDelta(product: Product) {

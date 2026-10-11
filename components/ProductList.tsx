@@ -65,7 +65,10 @@ export function ProductRows({
                 </div>
               </div>
             </div>
-            <Num className="text-3xl font-bold tracking-tight text-navy">{formatQty(totalQty(product))}</Num>
+            <div className="text-end">
+              <Num className="text-3xl font-bold tracking-tight text-navy">{formatQty(totalQty(product))}</Num>
+              <p className="mt-0.5 text-xs font-medium text-navy/50">{t(lang, "unitPieces")}</p>
+            </div>
           </div>
         );
         return (

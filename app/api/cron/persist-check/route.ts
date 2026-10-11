@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { databaseIsDurable, ensureDbReady, persistDb, usingTurso } from "@/lib/db";
+import { databaseIsDurable, ensureDbReady, persistDb, usingFirestore } from "@/lib/db";
 import { createBusiness, getBusiness, listBusinesses, updateBusiness } from "@/lib/db/queries";
 
 export const runtime = "nodejs";
@@ -44,7 +44,7 @@ export async function GET(request: Request) {
         marker,
         businessId: existing.id,
         name: row?.name ?? null,
-        database: usingTurso() ? "turso" : "local-file",
+        database: usingFirestore() ? "firestore" : "unset",
         durable: databaseIsDurable(),
       });
     }
@@ -62,7 +62,7 @@ export async function GET(request: Request) {
       marker,
       businessId: created.id,
       name: created.name,
-      database: usingTurso() ? "turso" : "local-file",
+      database: usingFirestore() ? "firestore" : "unset",
       durable: databaseIsDurable(),
     });
   }
@@ -76,7 +76,7 @@ export async function GET(request: Request) {
     expected: expected || null,
     found: name,
     businessId: existing?.id ?? null,
-    database: usingTurso() ? "turso" : "local-file",
+    database: usingFirestore() ? "firestore" : "unset",
     durable: databaseIsDurable(),
     survived: matched,
   });

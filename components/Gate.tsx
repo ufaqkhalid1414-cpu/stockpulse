@@ -7,7 +7,7 @@ import type { AccessRole } from "@/lib/types";
 
 const OWNER_ONLY = ["/dashboard", "/settings", "/staff", "/low-stock"];
 const STAFF_BLOCKED_PREFIX = "/prices";
-const PUBLIC = ["/", "/login"];
+const PUBLIC = ["/", "/login", "/privacy", "/terms"];
 
 function pathAllowed(pathname: string, role: AccessRole | null) {
   if (!role) return PUBLIC.includes(pathname);
@@ -30,7 +30,7 @@ export function Gate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!ready) return;
     if (!authenticated && !onPublic) {
-      router.replace("/");
+      router.replace("/login");
       return;
     }
     if (authenticated && needsSetup && pathname !== "/login") {
@@ -42,7 +42,7 @@ export function Gate({ children }: { children: React.ReactNode }) {
       return;
     }
     if (authenticated && !needsSetup && role && !pathAllowed(pathname, role)) {
-      router.replace(homePath || "/");
+      router.replace(homePath || "/dashboard");
     }
   }, [ready, authenticated, needsSetup, state.onboarded, onPublic, role, homePath, pathname, router]);
 

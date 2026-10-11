@@ -21,19 +21,36 @@ body {
 
 .landing-shell {
   background:
-    radial-gradient(1200px 600px at 10% -10%, rgba(217, 169, 71, 0.14), transparent 55%),
-    radial-gradient(900px 500px at 100% 0%, rgba(45, 59, 94, 0.06), transparent 50%),
-    #faf6ee;
+    radial-gradient(1200px 600px at 10% -10%, rgba(217, 166, 58, 0.12), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, rgba(37, 52, 95, 0.05), transparent 50%),
+    #f7f3ea;
+  color: #25345f;
 }
 
 .landing-hero-glow {
   background:
-    linear-gradient(180deg, rgba(250, 246, 238, 0) 0%, rgba(250, 246, 238, 0.85) 100%),
-    radial-gradient(ellipse 80% 60% at 70% 40%, rgba(217, 169, 71, 0.12), transparent 70%);
+    linear-gradient(180deg, rgba(247, 243, 234, 0) 0%, rgba(247, 243, 234, 0.9) 100%),
+    radial-gradient(ellipse 70% 55% at 75% 35%, rgba(217, 166, 58, 0.14), transparent 70%);
 }
 
-.landing-product-plane {
-  box-shadow: 0 24px 48px -28px rgba(45, 59, 94, 0.35);
+.scroll-mt-landing {
+  scroll-margin-top: 5.5rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html:focus-within {
+    scroll-behavior: smooth;
+  }
+}
+
+.landing-preview {
+  transition: transform 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-preview {
+    transition: none;
+  }
 }
 
 ::selection {

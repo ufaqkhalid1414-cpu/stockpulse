@@ -8,6 +8,8 @@ import {
   createSession,
   otpDevModeEnabled,
   resolveBusinessForPhone,
+  SESSION_COOKIE,
+  sessionCookieOptions,
   verifyOtp,
 } from "@/lib/session";
 import { sendWhatsApp, twilioConfigured } from "@/lib/twilio";
@@ -93,12 +95,12 @@ export async function POST(request: Request) {
       }
 
       const existing = await resolveBusinessForPhone(phone);
-      await createSession(phone, existing?.id ?? null);
+      const created = await createSession(phone, existing?.id ?? null);
       await persistDb();
 
       const membership = await findMembershipByPhone(phone);
 
-      return NextResponse.json({
+      const res = NextResponse.json({
         ok: true,
         authenticated: true,
         needsSetup: !existing,
@@ -107,6 +109,9 @@ export async function POST(request: Request) {
         role: membership?.role ?? null,
         homePath: membership ? homePathForRole(membership.role) : "/",
       });
+      // Set cookie on the response explicitly so browsers always persist it.
+      res.cookies.set(SESSION_COOKIE, created.token, created.cookieOptions ?? sessionCookieOptions());
+      return res;
     }
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });

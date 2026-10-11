@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="1400" viewBox="0 0 1100 1400" role="img" aria-labelledby="title desc">
+  <title id="title">StockPulse app flow</title>
+  <desc id="desc">End-to-end flow of the StockPulse inventory app: login, roles, owner features, API, and data layer.</desc>
+  <style>
+    .bg { fill: #FAF6EE; }
+    .card { fill: #ffffff; stroke: #2D3B5E; stroke-width: 1.5; }
+    .section { fill: #F3EEE4; stroke: #2D3B5E; stroke-width: 1; stroke-dasharray: 4 3; }
+    .box { fill: #ffffff; stroke: #2D3B5E; stroke-width: 1.5; }
+    .boxAccent { fill: #2D3B5E; }
+    .title { font: 700 22px Segoe UI, Arial, sans-serif; fill: #2D3B5E; }
+    .h { font: 700 14px Segoe UI, Arial, sans-serif; fill: #2D3B5E; }
+    .t { font: 400 12px Segoe UI, Arial, sans-serif; fill: #2D3B5E; }
+    .tw { font: 600 12px Segoe UI, Arial, sans-serif; fill: #ffffff; }
+    .muted { font: 400 11px Segoe UI, Arial, sans-serif; fill: #2D3B5E; fill-opacity: 0.65; }
+    .arrow { stroke: #2D3B5E; stroke-width: 1.75; fill: none; marker-end: url(#arrowHead); }
+    .label { font: 500 11px Segoe UI, Arial, sans-serif; fill: #8B6914; }
+  </style>
+  <defs>
+    <marker id="arrowHead" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#2D3B5E" />
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1100" height="1400" />
+  <text class="title" x="40" y="42">StockPulse  app flow</text>
+  <text class="muted" x="40" y="64">Frontend: Next.js � Backend: Next.js API � Database: SQLite (libSQL) � Optional: Twilio WhatsApp, Vercel Blob</text>
+
+  <!-- Entry -->
+  <rect class="section" x="40" y="90" width="480" height="150" rx="12" />
+  <text class="h" x="56" y="114">1. Entry</text>
+  <rect class="box" x="60" y="130" width="180" height="70" rx="10" />
+  <text class="t" x="78" y="160">Landing page</text>
+  <text class="muted" x="78" y="178">/  (marketing)</text>
+  <rect class="boxAccent" x="300" y="130" width="180" height="70" rx="10" />
+  <text class="tw" x="318" y="160">Login</text>
+  <text class="tw" x="318" y="178" style="fill-opacity:0.85">/login � WhatsApp OTP</text>
+  <path class="arrow" d="M240 165 H300" />
+  <text class="label" x="248" y="158">Sign in</text>
+
+  <!-- Auth -->
+  <rect class="section" x="560" y="90" width="500" height="150" rx="12" />
+  <text class="h" x="576" y="114">2. Auth</text>
+  <rect class="box" x="580" y="130" width="130" height="70" rx="10" />
+  <text class="t" x="594" y="155">Request OTP</text>
+  <text class="muted" x="594" y="173">max 3 / 10 min</text>
+  <rect class="box" x="740" y="130" width="130" height="70" rx="10" />
+  <text class="t" x="754" y="155">Verify code</text>
+  <text class="muted" x="754" y="173">6 digits</text>
+  <rect class="box" x="900" y="130" width="130" height="70" rx="10" />
+  <text class="t" x="914" y="155">Session</text>
+  <text class="muted" x="914" y="173">cookie � 30 days</text>
+  <path class="arrow" d="M710 165 H740" />
+  <path class="arrow" d="M870 165 H900" />
+  <path class="arrow" d="M480 165 H580" />
+
+  <!-- Roles -->
+  <rect class="section" x="40" y="270" width="1020" height="160" rx="12" />
+  <text class="h" x="56" y="294">3. After login  roles</text>
+  <rect class="box" x="60" y="320" width="200" height="70" rx="10" />
+  <text class="t" x="78" y="350">Setup (if new)</text>
+  <text class="muted" x="78" y="368">Enter business name</text>
+  <rect class="boxAccent" x="320" y="320" width="200" height="70" rx="10" />
+  <text class="tw" x="338" y="350">Owner</text>
+  <text class="tw" x="338" y="368" style="fill-opacity:0.85">/dashboard</text>
+  <rect class="box" x="580" y="320" width="200" height="70" rx="10" />
+  <text class="t" x="598" y="350">Staff (can add)</text>
+  <text class="muted" x="598" y="368">/add-product</text>
+  <rect class="box" x="840" y="320" width="180" height="70" rx="10" />
+  <text class="t" x="858" y="350">Staff (view only)</text>
+  <text class="muted" x="858" y="368">/items</text>
+  <path class="arrow" d="M965 200 V250 H160 V320" />
+  <path class="arrow" d="M260 355 H320" />
+  <path class="arrow" d="M520 355 H580" />
+  <path class="arrow" d="M780 355 H840" />
+  <text class="label" x="268" y="348">owners</text>
+  <text class="label" x="528" y="348">staff</text>
+
+  <!-- Owner app -->
+  <rect class="section" x="40" y="460" width="1020" height="160" rx="12" />
+  <text class="h" x="56" y="484">4. Owner app screens</text>
+  <rect class="box" x="60" y="510" width="180" height="70" rx="10" />
+  <text class="t" x="78" y="540">Dashboard</text>
+  <text class="muted" x="78" y="558">value � low stock</text>
+  <rect class="box" x="280" y="510" width="180" height="70" rx="10" />
+  <text class="t" x="298" y="540">Owners &amp; Staff</text>
+  <text class="muted" x="298" y="558">people &amp; roles</text>
+  <rect class="box" x="500" y="510" width="180" height="70" rx="10" />
+  <text class="t" x="518" y="540">Settings</text>
+  <text class="muted" x="518" y="558">status � backup � Shopify</text>
+  <rect class="box" x="720" y="510" width="180" height="70" rx="10" />
+  <text class="t" x="738" y="540">Price charts</text>
+  <text class="muted" x="738" y="558">monthly compare</text>
+  <path class="arrow" d="M420 390 V470 H150 V510" />
+
+  <!-- Settings detail -->
+  <rect class="section" x="40" y="650" width="1020" height="140" rx="12" />
+  <text class="h" x="56" y="674">5. Settings (owners)</text>
+  <rect class="box" x="60" y="700" width="200" height="55" rx="10" />
+  <text class="t" x="78" y="732">System Status /</text>
+  <rect class="box" x="300" y="700" width="200" height="55" rx="10" />
+  <text class="t" x="318" y="732">Back up now</text>
+  <rect class="box" x="540" y="700" width="220" height="55" rx="10" />
+  <text class="t" x="558" y="732">Backup History �</text>
+  <rect class="box" x="800" y="700" width="200" height="55" rx="10" />
+  <text class="t" x="818" y="732">Shopify sync</text>
+  <path class="arrow" d="M590 580 V650" />
+
+  <!-- Backend -->
+  <rect class="section" x="40" y="820" width="1020" height="160" rx="12" />
+  <text class="h" x="56" y="844">6. Backend  Next.js API (TypeScript)</text>
+  <rect class="box" x="60" y="870" width="150" height="70" rx="10" />
+  <text class="t" x="78" y="900">/api/auth/otp</text>
+  <text class="muted" x="78" y="918">login codes</text>
+  <rect class="box" x="240" y="870" width="150" height="70" rx="10" />
+  <text class="t" x="258" y="900">/api/stock</text>
+  <text class="muted" x="258" y="918">products � backup</text>
+  <rect class="box" x="420" y="870" width="150" height="70" rx="10" />
+  <text class="t" x="438" y="900">/api/business</text>
+  <text class="muted" x="438" y="918">create � reset</text>
+  <rect class="box" x="600" y="870" width="170" height="70" rx="10" />
+  <text class="t" x="618" y="900">/api/system-status</text>
+  <text class="muted" x="618" y="918">health for Settings</text>
+  <rect class="box" x="800" y="870" width="200" height="70" rx="10" />
+  <text class="t" x="818" y="895">/api/cron/*</text>
+  <text class="muted" x="818" y="913">daily backup</text>
+  <text class="muted" x="818" y="928">monthly charts</text>
+  <path class="arrow" d="M590 755 V820" />
+
+  <!-- Data -->
+  <rect class="section" x="40" y="1010" width="1020" height="170" rx="12" />
+  <text class="h" x="56" y="1034">7. Data &amp; services</text>
+  <rect class="boxAccent" x="60" y="1060" width="280" height="80" rx="10" />
+  <text class="tw" x="78" y="1095">SQLite (libSQL)</text>
+  <text class="tw" x="78" y="1115" style="fill-opacity:0.85">local file � optional Turso</text>
+  <rect class="box" x="400" y="1060" width="280" height="80" rx="10" />
+  <text class="t" x="418" y="1095">Vercel Blob (optional)</text>
+  <text class="muted" x="418" y="1115">DB durability + JSON backups</text>
+  <rect class="box" x="740" y="1060" width="280" height="80" rx="10" />
+  <text class="t" x="758" y="1095">Twilio WhatsApp (optional)</text>
+  <text class="muted" x="758" y="1115">OTP � alerts � reports (sandbox)</text>
+  <path class="arrow" d="M340 905 V1010" />
+  <path class="arrow" d="M340 1100 H400" />
+  <path class="arrow" d="M200 940 H820 V1060" />
+
+  <text class="muted" x="40" y="1230">Local testing: http://localhost:3000/dashboard � Landing: http://localhost:3000/</text>
+  <text class="muted" x="40" y="1252">Stack: Next.js (UI + API) � TypeScript � SQLite/libSQL � React</text>
+  <text class="muted" x="40" y="1285">File: docs/stockpulse-app-flow.svg  open in browser, or rightclick � Save as</text>
+</svg>

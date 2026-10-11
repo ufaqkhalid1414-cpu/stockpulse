@@ -97,6 +97,14 @@ export function CheckIcon() {
   );
 }
 
+export function CrossIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden className="shrink-0 text-clay">
+      <path d="M5 5l10 10M15 5 5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function Num({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <span dir="ltr" className={`tabular-nums ${className}`}>
@@ -107,7 +115,7 @@ export function Num({ children, className = "" }: { children: React.ReactNode; c
 
 export function StatusBanner({ title, support }: { title: string; support: string }) {
   return (
-    <div className="depth rounded-card bg-sage px-5 py-4" role="status">
+    <div className="depth rounded-card bg-sage px-5 py-4 sm:px-6" role="status">
       <div className="flex items-start gap-3">
         <span className="mt-0.5">
           <CheckIcon />

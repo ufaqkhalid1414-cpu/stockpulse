@@ -6,7 +6,7 @@ export function TrendLine({ values, label }: { values: number[]; label: string }
   const reduce = useReducedMotion();
   const width = 320;
   const height = 72;
-  const pad = 8;
+  const pad = 12;
   const min = Math.min(...values);
   const max = Math.max(...values);
   const span = max - min || 1;

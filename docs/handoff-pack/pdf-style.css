@@ -1,0 +1,76 @@
+/* Shared PDF typography — consistent heading / body sizes */
+body {
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  font-size: 11pt;
+  line-height: 1.45;
+  color: #1a1a1a;
+}
+
+h1 {
+  font-size: 20pt;
+  font-weight: 700;
+  margin-top: 0.6em;
+  margin-bottom: 0.4em;
+  color: #2d3b5e;
+  page-break-after: avoid;
+}
+
+h2 {
+  font-size: 18pt;
+  font-weight: 700;
+  margin-top: 0.9em;
+  margin-bottom: 0.35em;
+  color: #2d3b5e;
+  page-break-after: avoid;
+}
+
+h3 {
+  font-size: 14pt;
+  font-weight: 700;
+  margin-top: 0.75em;
+  margin-bottom: 0.3em;
+  color: #2d3b5e;
+  page-break-after: avoid;
+}
+
+p, li, td, th {
+  font-size: 11pt;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.6em 0 1em;
+  font-size: 10.5pt;
+}
+
+th, td {
+  border: 1px solid #ccc;
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: #faf6ee;
+  font-weight: 700;
+}
+
+strong {
+  font-weight: 700;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid #ddd;
+  margin: 1.2em 0;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+code {
+  font-size: 10pt;
+}

@@ -1,0 +1,157 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="1680" viewBox="0 0 720 1680">
+  <defs>
+    <style>
+      .title { font: 700 18px Segoe UI, Arial, sans-serif; fill: #2D3B5E; }
+      .label { font: 600 13px Segoe UI, Arial, sans-serif; fill: #2D3B5E; }
+      .small { font: 600 11px Segoe UI, Arial, sans-serif; fill: #2D3B5E; }
+      .yn { font: 700 12px Segoe UI, Arial, sans-serif; fill: #B4552E; }
+      .box { fill: #FFFFFF; stroke: #2D3B5E; stroke-width: 2; }
+      .start { fill: #EDF3E7; stroke: #1E4630; stroke-width: 2.5; }
+      .end { fill: #FAF6EE; stroke: #2D3B5E; stroke-width: 2.5; }
+      .diamond { fill: #FFF8E7; stroke: #D9A947; stroke-width: 2; }
+      .line { stroke: #2D3B5E; stroke-width: 2; fill: none; }
+    </style>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#2D3B5E"/>
+    </marker>
+  </defs>
+
+  <text x="360" y="28" text-anchor="middle" class="title">StockPulse  Application Flow Diagram</text>
+  <text x="360" y="48" text-anchor="middle" class="small">Oval = Start/End · Rectangle = Process · Diamond = Decision (Yes/No)</text>
+
+  <!-- START -->
+  <ellipse cx="360" cy="90" rx="70" ry="28" class="start"/>
+  <text x="360" y="96" text-anchor="middle" class="label">START</text>
+  <line x1="360" y1="118" x2="360" y2="150" class="line" marker-end="url(#arrow)"/>
+
+  <!-- Open app -->
+  <rect x="250" y="150" width="220" height="44" rx="6" class="box"/>
+  <text x="360" y="178" text-anchor="middle" class="label">Open app (browser)</text>
+  <line x1="360" y1="194" x2="360" y2="226" class="line" marker-end="url(#arrow)"/>
+
+  <!-- Logged in? -->
+  <path d="M360,226 L430,266 L360,306 L290,266 Z" class="diamond"/>
+  <text x="360" y="262" text-anchor="middle" class="small">Already</text>
+  <text x="360" y="278" text-anchor="middle" class="small">logged in?</text>
+
+  <!-- No branch left to login -->
+  <text x="210" y="250" class="yn">No</text>
+  <line x1="290" y1="266" x2="160" y2="266" class="line"/>
+  <line x1="160" y1="266" x2="160" y2="340" class="line" marker-end="url(#arrow)"/>
+
+  <rect x="50" y="340" width="220" height="44" rx="6" class="box"/>
+  <text x="160" y="368" text-anchor="middle" class="label">Go to /login</text>
+  <line x1="160" y1="384" x2="160" y2="416" class="line" marker-end="url(#arrow)"/>
+
+  <rect x="40" y="416" width="240" height="50" rx="6" class="box"/>
+  <text x="160" y="438" text-anchor="middle" class="small">Enter WhatsApp number</text>
+  <text x="160" y="456" text-anchor="middle" class="small">Request OTP</text>
+  <line x1="160" y1="466" x2="160" y2="498" class="line" marker-end="url(#arrow)"/>
+
+  <path d="M160,498 L240,548 L160,598 L80,548 Z" class="diamond"/>
+  <text x="160" y="540" text-anchor="middle" class="small">OTP under</text>
+  <text x="160" y="556" text-anchor="middle" class="small">rate limit?</text>
+
+  <text x="55" y="530" class="yn">No</text>
+  <line x1="80" y1="548" x2="20" y2="548" class="line"/>
+  <line x1="20" y1="548" x2="20" y2="630" class="line" marker-end="url(#arrow)"/>
+  <rect x="0" y="630" width="120" height="50" rx="6" class="box"/>
+  <text x="60" y="652" text-anchor="middle" class="small">Show wait /</text>
+  <text x="60" y="668" text-anchor="middle" class="small">error</text>
+  <line x1="60" y1="680" x2="60" y2="720" class="line"/>
+  <line x1="60" y1="720" x2="160" y2="720" class="line"/>
+  <line x1="160" y1="720" x2="160" y2="466" class="line" marker-end="url(#arrow)"/>
+
+  <text x="250" y="530" class="yn">Yes</text>
+  <line x1="240" y1="548" x2="300" y2="548" class="line"/>
+  <line x1="300" y1="548" x2="300" y2="640" class="line" marker-end="url(#arrow)"/>
+
+  <rect x="190" y="640" width="220" height="44" rx="6" class="box"/>
+  <text x="300" y="668" text-anchor="middle" class="label">Send OTP (WhatsApp)</text>
+  <line x1="300" y1="684" x2="300" y2="716" class="line" marker-end="url(#arrow)"/>
+
+  <rect x="190" y="716" width="220" height="44" rx="6" class="box"/>
+  <text x="300" y="744" text-anchor="middle" class="label">User enters OTP code</text>
+  <line x1="300" y1="760" x2="300" y2="792" class="line" marker-end="url(#arrow)"/>
+
+  <path d="M300,792 L370,832 L300,872 L230,832 Z" class="diamond"/>
+  <text x="300" y="828" text-anchor="middle" class="small">Code</text>
+  <text x="300" y="844" text-anchor="middle" class="small">valid?</text>
+
+  <text x="195" y="816" class="yn">No</text>
+  <line x1="230" y1="832" x2="120" y2="832" class="line"/>
+  <line x1="120" y1="832" x2="120" y2="900" class="line" marker-end="url(#arrow)"/>
+  <rect x="40" y="900" width="160" height="40" rx="6" class="box"/>
+  <text x="120" y="926" text-anchor="middle" class="small">Show error ’ retry</text>
+  <line x1="120" y1="940" x2="120" y2="960" class="line"/>
+  <line x1="120" y1="960" x2="300" y2="960" class="line"/>
+  <line x1="300" y1="960" x2="300" y2="760" class="line" marker-end="url(#arrow)"/>
+
+  <!-- Yes valid ’ create session (merge with Yes logged in) -->
+  <text x="385" y="816" class="yn">Yes</text>
+  <line x1="370" y1="832" x2="450" y2="832" class="line"/>
+  <line x1="450" y1="832" x2="450" y2="1000" class="line"/>
+
+  <!-- Yes already logged in from top diamond -->
+  <text x="470" y="250" class="yn">Yes</text>
+  <line x1="430" y1="266" x2="520" y2="266" class="line"/>
+  <line x1="520" y1="266" x2="520" y2="1000" class="line"/>
+  <line x1="520" y1="1000" x2="360" y2="1000" class="line"/>
+  <line x1="450" y1="1000" x2="360" y2="1000" class="line"/>
+  <line x1="360" y1="1000" x2="360" y2="1030" class="line" marker-end="url(#arrow)"/>
+
+  <rect x="230" y="1030" width="260" height="44" rx="6" class="box"/>
+  <text x="360" y="1058" text-anchor="middle" class="label">Session active</text>
+  <line x1="360" y1="1074" x2="360" y2="1106" class="line" marker-end="url(#arrow)"/>
+
+  <path d="M360,1106 L445,1150 L360,1194 L275,1150 Z" class="diamond"/>
+  <text x="360" y="1144" text-anchor="middle" class="small">Business</text>
+  <text x="360" y="1160" text-anchor="middle" class="small">setup done?</text>
+
+  <text x="240" y="1134" class="yn">No</text>
+  <line x1="275" y1="1150" x2="120" y2="1150" class="line"/>
+  <line x1="120" y1="1150" x2="120" y2="1220" class="line" marker-end="url(#arrow)"/>
+  <rect x="20" y="1220" width="200" height="50" rx="6" class="box"/>
+  <text x="120" y="1242" text-anchor="middle" class="small">Setup business name</text>
+  <text x="120" y="1260" text-anchor="middle" class="small">on /login</text>
+  <line x1="120" y1="1270" x2="120" y2="1310" class="line"/>
+  <line x1="120" y1="1310" x2="360" y2="1310" class="line"/>
+  <line x1="360" y1="1310" x2="360" y2="1340" class="line" marker-end="url(#arrow)"/>
+
+  <text x="470" y="1134" class="yn">Yes</text>
+  <line x1="445" y1="1150" x2="560" y2="1150" class="line"/>
+  <line x1="560" y1="1150" x2="560" y2="1310" class="line"/>
+  <line x1="560" y1="1310" x2="360" y2="1310" class="line"/>
+
+  <!-- Role routing -->
+  <rect x="220" y="1340" width="280" height="44" rx="6" class="box"/>
+  <text x="360" y="1368" text-anchor="middle" class="label">Check user role (Gate)</text>
+  <line x1="360" y1="1384" x2="360" y2="1420" class="line" marker-end="url(#arrow)"/>
+
+  <path d="M360,1420 L460,1475 L360,1530 L260,1475 Z" class="diamond"/>
+  <text x="360" y="1465" text-anchor="middle" class="small">Owner</text>
+  <text x="360" y="1483" text-anchor="middle" class="small">role?</text>
+
+  <text x="230" y="1455" class="yn">No</text>
+  <line x1="260" y1="1475" x2="100" y2="1475" class="line"/>
+  <line x1="100" y1="1475" x2="100" y2="1570" class="line" marker-end="url(#arrow)"/>
+  <rect x="10" y="1570" width="180" height="60" rx="6" class="box"/>
+  <text x="100" y="1594" text-anchor="middle" class="small">Staff add ’ /add-product</text>
+  <text x="100" y="1612" text-anchor="middle" class="small">Staff view ’ /items</text>
+
+  <text x="490" y="1455" class="yn">Yes</text>
+  <line x1="460" y1="1475" x2="600" y2="1475" class="line"/>
+  <line x1="600" y1="1475" x2="600" y2="1570" class="line" marker-end="url(#arrow)"/>
+  <rect x="490" y="1570" width="220" height="60" rx="6" class="box"/>
+  <text x="600" y="1594" text-anchor="middle" class="small">Home ’ /dashboard</text>
+  <text x="600" y="1612" text-anchor="middle" class="small">+ settings, staff, prices</text>
+
+  <!-- END markers -->
+  <ellipse cx="100" cy="1660" rx="55" ry="18" class="end"/>
+  <text x="100" y="1665" text-anchor="middle" class="small">USE APP</text>
+  <line x1="100" y1="1630" x2="100" y2="1642" class="line" marker-end="url(#arrow)"/>
+
+  <ellipse cx="600" cy="1660" rx="55" ry="18" class="end"/>
+  <text x="600" y="1665" text-anchor="middle" class="small">USE APP</text>
+  <line x1="600" y1="1630" x2="600" y2="1642" class="line" marker-end="url(#arrow)"/>
+</svg>

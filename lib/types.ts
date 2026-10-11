@@ -15,8 +15,14 @@ export type Product = {
   warehouseQty: number;
   shopQty: number;
   onlineQty: number;
+  /** Always stored as price per piece (smallest sellable unit). */
   purchasePrice: number;
   restockThreshold: number;
+  /**
+   * Pieces in one carton when the product is bought in bulk.
+   * null / omitted = piece-only product (no carton UI anywhere).
+   */
+  piecesPerCarton: number | null;
   priceHistory: PricePoint[];
   photo?: string;
   shopifyVariantId?: string | null;
@@ -75,6 +81,7 @@ export type AppState = {
   owners: BusinessOwner[];
   lastBackup: string | null;
   backupHistory: BackupHistoryItem[];
+  activityHistory: ActivityHistoryItem[];
   connectedStores: number;
   ownerWhatsapp: string | null;
   priceThreshold: number;
@@ -89,4 +96,39 @@ export type BackupHistoryItem = {
   status: "success" | "failed";
   storagePath: string | null;
   error: string | null;
+};
+
+export type ActivityCategory = "stock" | "prices" | "products" | "staff" | "settings";
+
+export type ActivityAction =
+  | "product_added"
+  | "stock_deducted"
+  | "purchase_price_changed"
+  | "staff_added"
+  | "owner_added"
+  | "owner_removed"
+  | "settings_changed";
+
+/** Tenant-scoped accountability log (WHO / WHAT / WHERE / WHEN / before→after). */
+export type ActivityHistoryItem = {
+  id: string;
+  category: ActivityCategory;
+  action: ActivityAction;
+  actorPhone: string;
+  actorName: string;
+  actorRole: AccessRole;
+  productId: string | null;
+  productName: string | null;
+  location: Location | null;
+  fromLocation: Location | null;
+  toLocation: Location | null;
+  quantityChange: number | null;
+  previousValue: number | null;
+  newValue: number | null;
+  previousTotal: number | null;
+  newTotal: number | null;
+  summary: string;
+  detail: string | null;
+  status: "success";
+  createdAt: string;
 };

@@ -1,0 +1,76 @@
+flowchart TB
+  subgraph entry [Entry]
+    L["Landing page /"]
+    Login["Login /login<br/>WhatsApp OTP"]
+    L -->|Sign in| Login
+  end
+
+  subgraph auth [Auth]
+    OTP["Request code<br/>max 3 / 10 min"]
+    Verify["Verify 6-digit code"]
+    Session["Session cookie<br/>30 days"]
+    Login --> OTP --> Verify --> Session
+  end
+
+  subgraph roles [After login]
+    Setup["Setup business name<br/>if new account"]
+    Owner["Owner home<br/>/dashboard"]
+    StaffAdd["Staff add<br/>/add-product"]
+    StaffView["Staff view<br/>/items"]
+    Session --> Setup
+    Setup -->|equal / co-owner| Owner
+    Setup -->|staff add| StaffAdd
+    Setup -->|staff view| StaffView
+  end
+
+  subgraph ownerApp [Owner app]
+    Dash["Dashboard<br/>stock value · low stock"]
+    People["Owners & Staff"]
+    Settings["Settings"]
+    Prices["Price charts"]
+    Owner --> Dash
+    Owner --> People
+    Owner --> Settings
+    Owner --> Prices
+  end
+
+  subgraph settingsFlow [Settings]
+    Status["System Status<br/>DB · WhatsApp · last backup"]
+    Backup["Back up now"]
+    Hist["Backup History →"]
+    Shopify["Shopify connect / sync"]
+    Settings --> Status
+    Settings --> Backup
+    Settings --> Hist
+    Settings --> Shopify
+  end
+
+  subgraph backend [Backend — Next.js API]
+    API["app/api/*"]
+    Stock["/api/stock"]
+    Biz["/api/business"]
+    AuthAPI["/api/auth/otp"]
+    Sys["/api/system-status"]
+    CronB["/api/cron/daily-backup"]
+    CronC["/api/cron/monthly-chart"]
+  end
+
+  Dash --> Stock
+  People --> Stock
+  Backup --> Stock
+  Login --> AuthAPI
+  Status --> Sys
+  Setup --> Biz
+
+  subgraph data [Data layer]
+    DB["SQLite via libSQL<br/>local file · optional Turso"]
+    Blob["Vercel Blob<br/>DB flush + JSON backups"]
+    Twilio["Twilio WhatsApp<br/>sandbox / optional"]
+  end
+
+  API --> DB
+  AuthAPI --> Twilio
+  Stock --> Twilio
+  CronB --> Blob
+  Backup --> Blob
+  DB -.->|durable sync on Vercel| Blob

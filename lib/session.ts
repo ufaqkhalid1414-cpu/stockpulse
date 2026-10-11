@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomInt } from "crypto";
 import { cookies } from "next/headers";
-import { ensureDbReady, getDb, newId, nowIso, schedulePersistDb } from "@/lib/db";
+import { ensureDbReady, firestoreDb, newId, nowIso } from "@/lib/db";
 import { ensureOwnersTable, findMembershipByPhone, getBusiness, type BusinessRow } from "@/lib/db/queries";
 import { normalizePhone } from "@/lib/phone";
 
@@ -12,7 +12,6 @@ const SESSION_DAYS = 30;
 const OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_COOLDOWN_MS = 45 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
-/** Max OTP request attempts per phone in a rolling window (Prompt 8). */
 const OTP_RATE_MAX = 3;
 const OTP_RATE_WINDOW_MS = 10 * 60 * 1000;
 
@@ -33,35 +32,6 @@ function cookieSecure() {
 
 export async function ensureAuthTables() {
   await ensureDbReady();
-  await getDb().exec(`
-    CREATE TABLE IF NOT EXISTS otp_codes (
-      id TEXT PRIMARY KEY,
-      phone TEXT NOT NULL,
-      code_hash TEXT NOT NULL,
-      expires_at TEXT NOT NULL,
-      attempts INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_otp_phone ON otp_codes(phone);
-
-    CREATE TABLE IF NOT EXISTS otp_requests (
-      id TEXT PRIMARY KEY,
-      phone TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_otp_requests_phone ON otp_requests(phone);
-
-    CREATE TABLE IF NOT EXISTS sessions (
-      id TEXT PRIMARY KEY,
-      token_hash TEXT NOT NULL UNIQUE,
-      business_id TEXT,
-      phone TEXT NOT NULL,
-      expires_at TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash);
-    CREATE INDEX IF NOT EXISTS idx_sessions_phone ON sessions(phone);
-  `);
   await ensureOwnersTable();
 }
 
@@ -74,11 +44,10 @@ export async function createOtp(phone: string): Promise<{ code: string; cooldown
   const normalized = normalizePhone(phone);
   const now = Date.now();
   const windowStart = new Date(now - OTP_RATE_WINDOW_MS).toISOString();
+  const db = firestoreDb();
 
-  const rateRow = (await getDb()
-    .prepare("SELECT COUNT(*) AS c FROM otp_requests WHERE phone = ? AND created_at >= ?")
-    .get(normalized, windowStart)) as { c: number | bigint } | undefined;
-  const recentCount = Number(rateRow?.c ?? 0);
+  const rateSnap = await db.collection("otpRequests").where("phone", "==", normalized).get();
+  const recentCount = rateSnap.docs.filter((d) => String(d.data().createdAt) >= windowStart).length;
   if (recentCount >= OTP_RATE_MAX) {
     const err = new Error("Too many code requests for this number. Try again in about 10 minutes.");
     (err as Error & { rateLimited?: boolean; cooldownMs?: number }).rateLimited = true;
@@ -86,11 +55,12 @@ export async function createOtp(phone: string): Promise<{ code: string; cooldown
     throw err;
   }
 
-  const latest = (await getDb()
-    .prepare("SELECT created_at FROM otp_codes WHERE phone = ? ORDER BY created_at DESC LIMIT 1")
-    .get(normalized)) as { created_at: string } | undefined;
-  if (latest) {
-    const age = now - new Date(latest.created_at).getTime();
+  const codeSnap = await db.collection("otpCodes").where("phone", "==", normalized).get();
+  const latest = codeSnap.docs
+    .map((d) => d.data())
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0];
+  if (latest?.createdAt) {
+    const age = now - new Date(String(latest.createdAt)).getTime();
     if (age < OTP_COOLDOWN_MS) {
       const err = new Error("Please wait a moment before requesting another code.");
       (err as Error & { cooldownMs?: number }).cooldownMs = OTP_COOLDOWN_MS - age;
@@ -98,79 +68,90 @@ export async function createOtp(phone: string): Promise<{ code: string; cooldown
     }
   }
 
-  await getDb().prepare("DELETE FROM otp_codes WHERE phone = ?").run(normalized);
-  await getDb().prepare("DELETE FROM otp_requests WHERE created_at < ?").run(windowStart);
+  const batch = db.batch();
+  codeSnap.docs.forEach((d) => batch.delete(d.ref));
+  rateSnap.docs
+    .filter((d) => String(d.data().createdAt) < windowStart)
+    .forEach((d) => batch.delete(d.ref));
 
   const code = generateOtpCode();
   const created = nowIso();
   const expires = new Date(now + OTP_TTL_MS).toISOString();
-  await getDb()
-    .prepare(
-      `INSERT INTO otp_codes (id, phone, code_hash, expires_at, attempts, created_at)
-       VALUES (?, ?, ?, ?, 0, ?)`,
-    )
-    .run(newId(), normalized, hashSecret(code), expires, created);
-  await getDb()
-    .prepare(`INSERT INTO otp_requests (id, phone, created_at) VALUES (?, ?, ?)`)
-    .run(newId(), normalized, created);
-  schedulePersistDb();
+  batch.set(db.collection("otpCodes").doc(newId()), {
+    phone: normalized,
+    codeHash: hashSecret(code),
+    expiresAt: expires,
+    attempts: 0,
+    createdAt: created,
+  });
+  batch.set(db.collection("otpRequests").doc(newId()), {
+    phone: normalized,
+    createdAt: created,
+  });
+  await batch.commit();
   return { code, cooldownMs: OTP_COOLDOWN_MS };
 }
 
 export async function verifyOtp(phone: string, code: string): Promise<boolean> {
   await ensureAuthTables();
   const normalized = normalizePhone(phone);
-  const row = await getDb()
-    .prepare("SELECT * FROM otp_codes WHERE phone = ? ORDER BY created_at DESC LIMIT 1")
-    .get(normalized) as
-    | { id: string; code_hash: string; expires_at: string; attempts: number }
-    | undefined;
-  if (!row) return false;
-  if (new Date(row.expires_at).getTime() < Date.now()) {
-    await getDb().prepare("DELETE FROM otp_codes WHERE id = ?").run(row.id);
-    schedulePersistDb();
+  const db = firestoreDb();
+  const snap = await db.collection("otpCodes").where("phone", "==", normalized).get();
+  const doc = snap.docs.sort((a, b) =>
+    String(b.data().createdAt).localeCompare(String(a.data().createdAt)),
+  )[0];
+  if (!doc) return false;
+  const row = doc.data();
+  if (new Date(String(row.expiresAt)).getTime() < Date.now()) {
+    await doc.ref.delete();
     return false;
   }
-  if (row.attempts >= OTP_MAX_ATTEMPTS) {
-    await getDb().prepare("DELETE FROM otp_codes WHERE id = ?").run(row.id);
-    schedulePersistDb();
+  if (Number(row.attempts ?? 0) >= OTP_MAX_ATTEMPTS) {
+    await doc.ref.delete();
     return false;
   }
-  if (hashSecret(code.trim()) !== row.code_hash) {
-    await getDb().prepare("UPDATE otp_codes SET attempts = attempts + 1 WHERE id = ?").run(row.id);
-    schedulePersistDb();
+  if (hashSecret(code.trim()) !== row.codeHash) {
+    await doc.ref.set({ attempts: Number(row.attempts ?? 0) + 1 }, { merge: true });
     return false;
   }
-  await getDb().prepare("DELETE FROM otp_codes WHERE phone = ?").run(normalized);
-  schedulePersistDb();
+  const all = await db.collection("otpCodes").where("phone", "==", normalized).get();
+  const batch = db.batch();
+  all.docs.forEach((d) => batch.delete(d.ref));
+  await batch.commit();
   return true;
+}
+
+export function sessionCookieOptions() {
+  return {
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: cookieSecure(),
+    maxAge: SESSION_DAYS * 24 * 60 * 60,
+  };
 }
 
 export async function createSession(phone: string, businessId: string | null) {
   await ensureAuthTables();
   const normalized = normalizePhone(phone);
   const token = randomBytes(32).toString("hex");
-  const id = newId();
+  const tokenHash = hashSecret(token);
   const created = nowIso();
   const expires = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  await getDb()
-    .prepare(
-      `INSERT INTO sessions (id, token_hash, business_id, phone, expires_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    )
-    .run(id, hashSecret(token), businessId, normalized, expires, created);
-  schedulePersistDb();
 
-  const jar = await cookies();
-  jar.set(SESSION_COOKIE, token, {
-    path: "/",
-    httpOnly: true,
-    sameSite: "lax",
-    secure: cookieSecure(),
-    maxAge: SESSION_DAYS * 24 * 60 * 60,
+  // One document keyed by token hash — cookie lookup is a single read (no dual-write race).
+  await firestoreDb().collection("sessions").doc(tokenHash).set({
+    phone: normalized,
+    businessId,
+    expiresAt: expires,
+    createdAt: created,
   });
+
+  const opts = sessionCookieOptions();
+  const jar = await cookies();
+  jar.set(SESSION_COOKIE, token, opts);
   jar.delete(BUSINESS_COOKIE);
-  return { id, token, expiresAt: expires };
+  return { id: tokenHash, token, expiresAt: expires, cookieOptions: opts };
 }
 
 export async function destroySession() {
@@ -178,8 +159,10 @@ export async function destroySession() {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
   if (token) {
-    await getDb().prepare("DELETE FROM sessions WHERE token_hash = ?").run(hashSecret(token));
-    schedulePersistDb();
+    const tokenHash = hashSecret(token);
+    await firestoreDb().collection("sessions").doc(tokenHash).delete().catch(() => undefined);
+    // Legacy dual-write cleanup (pre-fix)
+    await firestoreDb().collection("sessionByToken").doc(tokenHash).delete().catch(() => undefined);
   }
   jar.delete(SESSION_COOKIE);
   jar.delete(BUSINESS_COOKIE);
@@ -190,31 +173,56 @@ export async function getSession(): Promise<AuthSession | null> {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return null;
-  const row = await getDb()
-    .prepare("SELECT id, phone, business_id, expires_at FROM sessions WHERE token_hash = ?")
-    .get(hashSecret(token)) as
-    | { id: string; phone: string; business_id: string | null; expires_at: string }
-    | undefined;
-  if (!row) return null;
-  if (new Date(row.expires_at).getTime() < Date.now()) {
-    await getDb().prepare("DELETE FROM sessions WHERE id = ?").run(row.id);
+  const tokenHash = hashSecret(token);
+
+  // Current format: sessions/{tokenHash}
+  let snap = await firestoreDb().collection("sessions").doc(tokenHash).get();
+  let sessionId = tokenHash;
+
+  // Legacy format: sessionByToken/{hash} → sessions/{uuid}
+  if (!snap.exists) {
+    const lookup = await firestoreDb().collection("sessionByToken").doc(tokenHash).get();
+    if (lookup.exists) {
+      sessionId = String(lookup.data()?.sessionId ?? "");
+      if (sessionId) {
+        snap = await firestoreDb().collection("sessions").doc(sessionId).get();
+        // Migrate legacy session to single-doc format
+        if (snap.exists) {
+          const row = snap.data()!;
+          await firestoreDb().collection("sessions").doc(tokenHash).set({
+            phone: row.phone,
+            businessId: row.businessId ?? null,
+            expiresAt: row.expiresAt,
+            createdAt: row.createdAt ?? nowIso(),
+          });
+          await snap.ref.delete().catch(() => undefined);
+          await lookup.ref.delete().catch(() => undefined);
+          snap = await firestoreDb().collection("sessions").doc(tokenHash).get();
+          sessionId = tokenHash;
+        }
+      }
+    }
+  }
+
+  if (!snap.exists) return null;
+  const row = snap.data()!;
+  if (new Date(String(row.expiresAt)).getTime() < Date.now()) {
+    await snap.ref.delete().catch(() => undefined);
     jar.delete(SESSION_COOKIE);
-    schedulePersistDb();
     return null;
   }
   return {
-    id: row.id,
-    phone: row.phone,
-    businessId: row.business_id,
-    expiresAt: row.expires_at,
+    id: sessionId,
+    phone: String(row.phone),
+    businessId: row.businessId ?? null,
+    expiresAt: String(row.expiresAt),
   };
 }
 
 export async function attachBusinessToSession(businessId: string) {
   const session = await getSession();
   if (!session) return null;
-  await getDb().prepare("UPDATE sessions SET business_id = ? WHERE id = ?").run(businessId, session.id);
-  schedulePersistDb();
+  await firestoreDb().collection("sessions").doc(session.id).set({ businessId }, { merge: true });
   return { ...session, businessId };
 }
 
@@ -222,7 +230,6 @@ export async function requireSession(): Promise<AuthSession | null> {
   return await getSession();
 }
 
-/** Any logged-in member of the business (owner or staff). */
 export async function requireBusiness(): Promise<BusinessRow | null> {
   const session = await getSession();
   if (!session?.businessId) return null;

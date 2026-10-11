@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="1180" viewBox="0 0 720 1180">
+  <defs>
+    <style>
+      .title { font: 700 18px Segoe UI, Arial, sans-serif; fill: #2D3B5E; }
+      .label { font: 600 13px Segoe UI, Arial, sans-serif; fill: #2D3B5E; }
+      .small { font: 600 11px Segoe UI, Arial, sans-serif; fill: #2D3B5E; }
+      .yn { font: 700 12px Segoe UI, Arial, sans-serif; fill: #B4552E; }
+      .box { fill: #FFFFFF; stroke: #2D3B5E; stroke-width: 2; }
+      .start { fill: #EDF3E7; stroke: #1E4630; stroke-width: 2.5; }
+      .end { fill: #FAF6EE; stroke: #2D3B5E; stroke-width: 2.5; }
+      .diamond { fill: #FFF8E7; stroke: #D9A947; stroke-width: 2; }
+      .line { stroke: #2D3B5E; stroke-width: 2; fill: none; }
+    </style>
+    <marker id="arrow2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#2D3B5E"/>
+    </marker>
+  </defs>
+
+  <text x="360" y="28" text-anchor="middle" class="title">StockPulse  Stock &amp; Backup Flow</text>
+  <text x="360" y="48" text-anchor="middle" class="small">After login  inventory actions and daily backup</text>
+
+  <ellipse cx="360" cy="90" rx="80" ry="28" class="start"/>
+  <text x="360" y="96" text-anchor="middle" class="label">START (in app)</text>
+  <line x1="360" y1="118" x2="360" y2="155" class="line" marker-end="url(#arrow2)"/>
+
+  <rect x="220" y="155" width="280" height="44" rx="6" class="box"/>
+  <text x="360" y="183" text-anchor="middle" class="label">User chooses an action</text>
+  <line x1="360" y1="199" x2="360" y2="235" class="line" marker-end="url(#arrow2)"/>
+
+  <path d="M360,235 L470,295 L360,355 L250,295 Z" class="diamond"/>
+  <text x="360" y="285" text-anchor="middle" class="small">Add / change</text>
+  <text x="360" y="303" text-anchor="middle" class="small">stock?</text>
+
+  <!-- Yes stock path -->
+  <text x="490" y="275" class="yn">Yes</text>
+  <line x1="470" y1="295" x2="600" y2="295" class="line"/>
+  <line x1="600" y1="295" x2="600" y2="400" class="line" marker-end="url(#arrow2)"/>
+
+  <rect x="490" y="400" width="220" height="70" rx="6" class="box"/>
+  <text x="600" y="428" text-anchor="middle" class="small">Pick location:</text>
+  <text x="600" y="446" text-anchor="middle" class="small">warehouse / shop /</text>
+  <text x="600" y="464" text-anchor="middle" class="small">online</text>
+  <line x1="600" y1="470" x2="600" y2="510" class="line" marker-end="url(#arrow2)"/>
+
+  <path d="M600,510 L680,555 L600,600 L520,555 Z" class="diamond"/>
+  <text x="600" y="545" text-anchor="middle" class="small">Role may</text>
+  <text x="600" y="561" text-anchor="middle" class="small">add?</text>
+
+  <text x="500" y="535" class="yn">No</text>
+  <line x1="520" y1="555" x2="440" y2="555" class="line"/>
+  <line x1="440" y1="555" x2="440" y2="640" class="line" marker-end="url(#arrow2)"/>
+  <rect x="360" y="640" width="160" height="44" rx="6" class="box"/>
+  <text x="440" y="668" text-anchor="middle" class="small">Forbidden ’ stop</text>
+
+  <text x="690" y="535" class="yn">Yes</text>
+  <line x1="680" y1="555" x2="680" y2="640" class="line" marker-end="url(#arrow2)"/>
+  <rect x="560" y="640" width="200" height="55" rx="6" class="box"/>
+  <text x="660" y="665" text-anchor="middle" class="small">Save to database</text>
+  <text x="660" y="683" text-anchor="middle" class="small">(Firebase)</text>
+  <line x1="660" y1="695" x2="660" y2="750" class="line"/>
+  <line x1="660" y1="750" x2="360" y2="750" class="line"/>
+  <line x1="360" y1="750" x2="360" y2="800" class="line" marker-end="url(#arrow2)"/>
+
+  <!-- No stock  other actions -->
+  <text x="220" y="275" class="yn">No</text>
+  <line x1="250" y1="295" x2="120" y2="295" class="line"/>
+  <line x1="120" y1="295" x2="120" y2="400" class="line" marker-end="url(#arrow2)"/>
+
+  <rect x="20" y="400" width="200" height="70" rx="6" class="box"/>
+  <text x="120" y="428" text-anchor="middle" class="small">View items / low stock</text>
+  <text x="120" y="446" text-anchor="middle" class="small">or prices / people /</text>
+  <text x="120" y="464" text-anchor="middle" class="small">settings (by role)</text>
+  <line x1="120" y1="470" x2="120" y2="750" class="line"/>
+  <line x1="120" y1="750" x2="360" y2="750" class="line"/>
+
+  <rect x="200" y="800" width="320" height="44" rx="6" class="box"/>
+  <text x="360" y="828" text-anchor="middle" class="label">Daily backup cron (Vercel)</text>
+  <line x1="360" y1="844" x2="360" y2="880" class="line" marker-end="url(#arrow2)"/>
+
+  <path d="M360,880 L450,930 L360,980 L270,930 Z" class="diamond"/>
+  <text x="360" y="920" text-anchor="middle" class="small">Backup</text>
+  <text x="360" y="938" text-anchor="middle" class="small">OK?</text>
+
+  <text x="235" y="910" class="yn">No</text>
+  <line x1="270" y1="930" x2="140" y2="930" class="line"/>
+  <line x1="140" y1="930" x2="140" y2="1040" class="line" marker-end="url(#arrow2)"/>
+  <rect x="40" y="1040" width="200" height="55" rx="6" class="box"/>
+  <text x="140" y="1065" text-anchor="middle" class="small">Log failed + error</text>
+  <text x="140" y="1083" text-anchor="middle" class="small">in Backup History</text>
+
+  <text x="470" y="910" class="yn">Yes</text>
+  <line x1="450" y1="930" x2="560" y2="930" class="line"/>
+  <line x1="560" y1="930" x2="560" y2="1040" class="line" marker-end="url(#arrow2)"/>
+  <rect x="450" y="1040" width="220" height="55" rx="6" class="box"/>
+  <text x="560" y="1065" text-anchor="middle" class="small">Save file to Blob/</text>
+  <text x="560" y="1083" text-anchor="middle" class="small">Storage + history row</text>
+
+  <ellipse cx="360" cy="1150" rx="60" ry="20" class="end"/>
+  <text x="360" y="1156" text-anchor="middle" class="label">END</text>
+  <line x1="140" y1="1095" x2="140" y2="1120" class="line"/>
+  <line x1="140" y1="1120" x2="360" y2="1120" class="line"/>
+  <line x1="560" y1="1095" x2="560" y2="1120" class="line"/>
+  <line x1="560" y1="1120" x2="360" y2="1120" class="line"/>
+  <line x1="360" y1="1120" x2="360" y2="1130" class="line" marker-end="url(#arrow2)"/>
+</svg>

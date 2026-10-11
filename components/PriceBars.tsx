@@ -9,10 +9,13 @@ export function PriceBars({
   points,
   lang,
   label,
+  unitLabel,
 }: {
   points: PricePoint[];
   lang: Lang;
   label: string;
+  /** e.g. "per piece" / "per carton" — always shown in bar tooltips */
+  unitLabel?: string;
 }) {
   const reduce = useReducedMotion();
   const max = Math.max(...points.map((point) => point.price), 1);
@@ -24,6 +27,9 @@ export function PriceBars({
         {points.map((point, index) => {
           const height = Math.max(8, (point.price / max) * 160);
           const current = index === lastIndex;
+          const tip = unitLabel
+            ? `${formatMonth(point.month, lang)} ${formatMoney(point.price)} ${unitLabel}`
+            : `${formatMonth(point.month, lang)} ${formatMoney(point.price)}`;
           return (
             <div key={point.month} className="flex h-full flex-1 items-end">
               <motion.div
@@ -36,7 +42,7 @@ export function PriceBars({
                   delay: reduce ? 0 : index * 0.04,
                   ease: [0.22, 1, 0.36, 1],
                 }}
-                title={`${formatMonth(point.month, lang)} ${formatMoney(point.price)}`}
+                title={tip}
               />
             </div>
           );

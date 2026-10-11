@@ -15,7 +15,7 @@ export const runtime = "nodejs";
 export async function GET() {
   try {
     await ensureDbReady();
-    const session = await getSession();
+    let session = await getSession();
     if (!session) {
       return NextResponse.json({
         authenticated: false,
@@ -26,6 +26,19 @@ export async function GET() {
         business: null,
       });
     }
+
+    let membership = await findMembershipByPhone(session.phone);
+
+    // Heal session ↔ membership drift (common after SQLite→Firestore cutover).
+    if (membership && session.businessId && membership.businessId !== session.businessId) {
+      const attached = await attachBusinessToSession(membership.businessId);
+      if (attached) session = attached;
+    }
+    if (!session.businessId && membership) {
+      const attached = await attachBusinessToSession(membership.businessId);
+      if (attached) session = attached;
+    }
+
     if (!session.businessId) {
       return NextResponse.json({
         authenticated: true,
@@ -36,7 +49,7 @@ export async function GET() {
         business: null,
       });
     }
-    const membership = await findMembershipByPhone(session.phone);
+
     if (!membership || membership.businessId !== session.businessId) {
       return NextResponse.json({
         authenticated: true,
@@ -47,6 +60,7 @@ export async function GET() {
         business: null,
       });
     }
+
     const state = await buildBusinessState(session.businessId);
     if (!state) {
       return NextResponse.json({
@@ -68,11 +82,11 @@ export async function GET() {
     });
   } catch (err) {
     console.error("[api/business GET]", err);
+    // Do not claim authenticated:false on transient DB errors — client keeps prior session.
     return NextResponse.json(
       {
         error: err instanceof Error ? err.message : "Database unavailable",
-        authenticated: false,
-        business: null,
+        unavailable: true,
       },
       { status: 503 },
     );

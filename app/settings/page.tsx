@@ -1,15 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { LanguageMenu } from "@/components/LanguageMenu";
-import { Button, CheckIcon, Field, Lead } from "@/components/ui";
+import { Menu } from "@/components/Menu";
+import { Button, CheckIcon, CrossIcon, Field, Lead } from "@/components/ui";
 import { VoiceInput } from "@/components/VoiceInput";
-import { formatWhen } from "@/lib/format";
+import { formatActivityCard } from "@/lib/activity-display";
+import { formatDateTime, formatWhen } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import { markScrollTop } from "@/lib/scroll";
 import { useStock } from "@/lib/store";
+import type { ActivityCategory } from "@/lib/types";
 import { useRouter } from "next/navigation";
+
+type StatusRow = {
+  ok: boolean;
+  label: string;
+  detail: string | null;
+  hint: string | null;
+  at?: string | null;
+};
+
+type SystemStatus = {
+  database: StatusRow;
+  whatsapp: StatusRow;
+  lastBackup: StatusRow & { at: string | null };
+};
 
 export default function SettingsPage() {
   const {
@@ -40,7 +57,29 @@ export default function SettingsPage() {
   const [notice, setNotice] = useState("");
   const [shopDomain, setShopDomain] = useState("");
   const [shopToken, setShopToken] = useState("");
+  const [showBackupHistory, setShowBackupHistory] = useState(false);
+  const [showActivityHistory, setShowActivityHistory] = useState(true);
+  const [activityFilter, setActivityFilter] = useState<"all" | ActivityCategory>("all");
+  const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   const shopify = state.shopify;
+
+  const activityRows = useMemo(() => {
+    const rows = state.activityHistory ?? [];
+    if (activityFilter === "all") return rows;
+    return rows.filter((row) => row.category === activityFilter);
+  }, [state.activityHistory, activityFilter]);
+
+  const loadSystemStatus = useCallback(async () => {
+    if (!isOwner) return;
+    try {
+      const res = await fetch("/api/system-status");
+      if (!res.ok) return;
+      const data = (await res.json()) as SystemStatus;
+      setSystemStatus(data);
+    } catch {
+      /* keep prior */
+    }
+  }, [isOwner]);
 
   useEffect(() => {
     setName(state.businessName);
@@ -50,6 +89,10 @@ export default function SettingsPage() {
     if (shopify?.shopDomain) setShopDomain(shopify.shopDomain);
   }, [shopify?.shopDomain]);
 
+  useEffect(() => {
+    void loadSystemStatus();
+  }, [loadSystemStatus, state.lastBackup]);
+
   return (
     <AppShell>
       <Lead
@@ -57,7 +100,188 @@ export default function SettingsPage() {
         support={state.lastBackup ? t(lang, "settingsLeadOkSupport") : t(lang, "settingsLeadNoneSupport")}
       />
 
-      <div className="card mt-6 space-y-6 p-5 sm:p-6">
+      {isOwner ? (
+        <div className="card mt-6 space-y-4 p-5 sm:p-6">
+          <div>
+            <p className="text-lg font-bold text-navy">{t(lang, "systemStatus")}</p>
+            <p className="mt-1 text-sm text-navy/60">{t(lang, "systemStatusSupport")}</p>
+          </div>
+          {systemStatus ? (
+            <ul className="space-y-3">
+              <StatusLine
+                ok={systemStatus.database.ok}
+                title={t(lang, "statusDatabase")}
+                value={
+                  systemStatus.database.ok
+                    ? t(lang, "statusConnected")
+                    : t(lang, "statusNotConnected")
+                }
+                hint={systemStatus.database.ok ? null : t(lang, "statusDatabaseBad")}
+              />
+              <StatusLine
+                ok={systemStatus.whatsapp.ok}
+                title={t(lang, "statusWhatsApp")}
+                value={
+                  systemStatus.whatsapp.ok
+                    ? t(lang, "statusConnected")
+                    : t(lang, "statusNotConnected")
+                }
+                hint={systemStatus.whatsapp.ok ? null : t(lang, "statusWhatsAppBad")}
+              />
+              <StatusLine
+                ok={systemStatus.lastBackup.ok}
+                title={t(lang, "statusLastBackup")}
+                value={
+                  systemStatus.lastBackup.at
+                    ? formatDateTime(systemStatus.lastBackup.at, lang)
+                    : t(lang, "statusBackupNone")
+                }
+                hint={null}
+              />
+            </ul>
+          ) : (
+            <p className="text-sm text-navy/55">…</p>
+          )}
+        </div>
+      ) : null}
+
+      <div className="card mt-4 space-y-4 p-5 sm:p-6">
+        <div>
+          <p className="font-semibold text-navy">{t(lang, "activityHistory")}</p>
+          <p className="mt-1 text-sm text-navy/70">{t(lang, "activityHistorySupport")}</p>
+        </div>
+        <button
+          type="button"
+          className="flex w-full items-center justify-between rounded-xl border-2 border-navy/20 bg-cream px-4 py-4 text-left transition hover:border-navy/35"
+          onClick={() => setShowActivityHistory((open) => !open)}
+          aria-expanded={showActivityHistory}
+        >
+          <span className="text-base font-bold text-navy sm:text-lg">
+            {showActivityHistory ? t(lang, "activityHistoryHide") : t(lang, "activityHistoryOpen")}
+          </span>
+        </button>
+
+        {showActivityHistory ? (
+          <div className="space-y-3">
+            <Menu
+              label={t(lang, "activityHistory")}
+              value={activityFilter}
+              align="start"
+              options={[
+                { value: "all", label: t(lang, "activityFilterAll") },
+                { value: "stock", label: t(lang, "activityFilterStock") },
+                { value: "prices", label: t(lang, "activityFilterPrices") },
+                { value: "products", label: t(lang, "activityFilterProducts") },
+                { value: "staff", label: t(lang, "activityFilterStaff") },
+                { value: "settings", label: t(lang, "activityFilterSettings") },
+              ]}
+              onChange={(value) => setActivityFilter(value as "all" | ActivityCategory)}
+            />
+            {activityRows.length === 0 ? (
+              <p className="text-sm text-navy/70">{t(lang, "activityHistoryEmpty")}</p>
+            ) : (
+              <ul className="divide-y divide-navy/10 rounded-xl border border-navy/10 bg-white">
+                {activityRows.map((entry) => {
+                  const card = formatActivityCard(lang, entry);
+                  return (
+                    <li key={entry.id} className="space-y-1.5 px-4 py-3.5 text-sm">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <p className="font-semibold text-navy">{card.who}</p>
+                        <p className="text-xs font-medium text-navy/50">{card.action}</p>
+                      </div>
+                      <p className="text-navy">{card.what}</p>
+                      {card.where ? <p className="text-navy/70">{card.where}</p> : null}
+                      {card.change ? (
+                        <p className="font-medium text-navy/80" dir="ltr">
+                          {card.change}
+                        </p>
+                      ) : null}
+                      <p className="text-xs text-navy/55" dir="ltr">
+                        {card.when}
+                      </p>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="card mt-4 space-y-4 p-5 sm:p-6">
+        <div className="flex items-start gap-3">
+          {state.lastBackup ? <CheckIcon /> : null}
+          <div>
+            <p className="font-semibold text-navy">{t(lang, "lastBackup")}</p>
+            <p className="mt-1 text-sm text-navy/70">
+              {state.lastBackup
+                ? t(lang, "backupOk", { time: formatDateTime(state.lastBackup, lang) })
+                : t(lang, "noBackup")}
+            </p>
+          </div>
+        </div>
+        <Button
+          variant="secondary"
+          disabled={busy}
+          onClick={async () => {
+            await runBackup();
+            setBackupFlash(true);
+            setShowBackupHistory(true);
+            window.setTimeout(() => setBackupFlash(false), 2000);
+            void loadSystemStatus();
+          }}
+        >
+          {backupFlash ? t(lang, "backupDone") : t(lang, "runBackupNow")}
+        </Button>
+
+        <button
+          type="button"
+          className="flex w-full items-center justify-between rounded-xl border-2 border-navy/20 bg-cream px-4 py-4 text-left transition hover:border-navy/35"
+          onClick={() => setShowBackupHistory((open) => !open)}
+          aria-expanded={showBackupHistory}
+        >
+          <span className="text-base font-bold text-navy sm:text-lg">
+            {showBackupHistory ? t(lang, "backupHistoryHide") : t(lang, "backupHistoryOpen")}
+          </span>
+        </button>
+
+        {showBackupHistory ? (
+          <div className="rounded-xl border border-navy/10 bg-white px-4 py-3">
+            <p className="font-semibold text-navy">{t(lang, "backupHistory")}</p>
+            {state.backupHistory.length === 0 ? (
+              <p className="mt-2 text-sm text-navy/70">{t(lang, "backupHistoryEmpty")}</p>
+            ) : (
+              <ul className="mt-3 divide-y divide-navy/10">
+                {state.backupHistory.map((entry) => (
+                  <li key={entry.id} className="flex items-start justify-between gap-3 py-2.5 text-sm">
+                    <div>
+                      <p className="font-medium text-navy" dir="ltr">
+                        {formatDateTime(entry.stampedAt, lang)}
+                      </p>
+                      {entry.status === "failed" ? (
+                        <p className="mt-0.5 text-xs text-navy/55">{t(lang, "backupFailedPlain")}</p>
+                      ) : null}
+                    </div>
+                    <span
+                      className={
+                        entry.status === "success"
+                          ? "shrink-0 font-medium text-pine"
+                          : "shrink-0 font-medium text-clay"
+                      }
+                    >
+                      {entry.status === "success"
+                        ? t(lang, "backupStatusSuccess")
+                        : t(lang, "backupStatusFailed")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="card mt-4 space-y-6 p-5 sm:p-6">
         <div>
           <p className="mb-2 text-sm font-medium text-navy/80">{t(lang, "language")}</p>
           <LanguageMenu align="start" />
@@ -202,60 +426,6 @@ export default function SettingsPage() {
         </div>
       ) : null}
 
-      <div className="card mt-4 space-y-4 p-5 sm:p-6">
-        <div className="flex items-start gap-3">
-          {state.lastBackup ? <CheckIcon /> : null}
-          <div>
-            <p className="font-semibold text-navy">{t(lang, "lastBackup")}</p>
-            <p className="mt-1 text-sm text-navy/70">
-              {state.lastBackup ? t(lang, "backupOk", { time: formatWhen(state.lastBackup, lang) }) : t(lang, "noBackup")}
-            </p>
-          </div>
-        </div>
-        <Button
-          variant="secondary"
-          disabled={busy}
-          onClick={async () => {
-            await runBackup();
-            setBackupFlash(true);
-            window.setTimeout(() => setBackupFlash(false), 2000);
-          }}
-        >
-          {backupFlash ? t(lang, "backupDone") : t(lang, "runBackupNow")}
-        </Button>
-
-        <div className="border-t border-navy/10 pt-4">
-          <p className="font-semibold text-navy">{t(lang, "backupHistory")}</p>
-          {state.backupHistory.length === 0 ? (
-            <p className="mt-2 text-sm text-navy/70">{t(lang, "backupHistoryEmpty")}</p>
-          ) : (
-            <ul className="mt-3 divide-y divide-navy/10">
-              {state.backupHistory.map((entry) => (
-                <li key={entry.id} className="flex items-start justify-between gap-3 py-2.5 text-sm">
-                  <div>
-                    <p className="font-medium text-navy">{formatWhen(entry.stampedAt, lang)}</p>
-                    {entry.status === "failed" && entry.error ? (
-                      <p className="mt-0.5 text-xs text-navy/55">{entry.error}</p>
-                    ) : null}
-                  </div>
-                  <span
-                    className={
-                      entry.status === "success"
-                        ? "shrink-0 font-medium text-pine"
-                        : "shrink-0 font-medium text-clay"
-                    }
-                  >
-                    {entry.status === "success"
-                      ? t(lang, "backupStatusSuccess")
-                      : t(lang, "backupStatusFailed")}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-
       <div className="card mt-4 space-y-3 p-5 sm:p-6">
         <Button
           disabled={busy}
@@ -317,5 +487,32 @@ export default function SettingsPage() {
         <p className="mt-8 text-sm text-navy/55">{t(lang, "coOwnerBlocked")}</p>
       ) : null}
     </AppShell>
+  );
+}
+
+function StatusLine({
+  ok,
+  title,
+  value,
+  hint,
+}: {
+  ok: boolean;
+  title: string;
+  value: string;
+  hint: string | null;
+}) {
+  return (
+    <li className="flex items-start gap-3 rounded-xl bg-cream px-4 py-3">
+      <span className="mt-0.5" aria-hidden>
+        {ok ? <CheckIcon /> : <CrossIcon />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold text-navy">
+          {title}: <span className={ok ? "text-pine" : "text-clay"}>{value}</span>{" "}
+          <span aria-hidden>{ok ? "✓" : "✗"}</span>
+        </p>
+        {!ok && hint ? <p className="mt-1 text-sm text-navy/65">{hint}</p> : null}
+      </div>
+    </li>
   );
 }

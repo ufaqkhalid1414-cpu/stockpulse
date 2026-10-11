@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ensureDbReady, persistDb, usingTurso } from "@/lib/db";
+import { ensureDbReady, persistDb, usingFirestore } from "@/lib/db";
 import { runDailyBackups } from "@/lib/db/queries";
 
 export const runtime = "nodejs";
@@ -36,7 +36,7 @@ export async function GET(request: Request) {
     ok: failed === 0,
     schedule: "daily (Vercel Cron 15 2 * * *)",
     storage: process.env.BLOB_READ_WRITE_TOKEN ? "vercel-blob" : "local-backups-dir",
-    database: usingTurso() ? "turso" : "local-file",
+    database: usingFirestore() ? "firestore" : "unset",
     backedUp: ok,
     failed,
     results,

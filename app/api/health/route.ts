@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { databaseIsDurable, ensureDbReady, usingTurso } from "@/lib/db";
+import { databaseIsDurable, ensureDbReady, usingFirestore } from "@/lib/db";
 import { listBusinesses } from "@/lib/db/queries";
 
 export const runtime = "nodejs";
@@ -12,7 +12,7 @@ export async function GET() {
     const businesses = await listBusinesses();
     return NextResponse.json({
       ok: true,
-      database: usingTurso() ? "turso" : "local-file",
+      database: usingFirestore() ? "firestore" : "unset",
       durable: databaseIsDurable(),
       blobConfigured: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
       businessCount: businesses.length,
@@ -22,7 +22,7 @@ export async function GET() {
     return NextResponse.json(
       {
         ok: false,
-        database: usingTurso() ? "turso" : "local-file",
+        database: usingFirestore() ? "firestore" : "unset",
         durable: databaseIsDurable(),
         error: err instanceof Error ? err.message : "Database unavailable",
       },

@@ -40,11 +40,13 @@ type StoreValue = {
     quantity: number;
     purchasePrice: number;
     photo?: string;
+    restockThreshold?: number;
+    piecesPerCarton?: number | null;
   }) => Promise<void>;
+  recordSale: (productId: string, location: Location, quantity: number) => Promise<{ alert: AlertItem | null }>;
   addStaff: (name: string, phone: string, permission: Permission) => Promise<void>;
   addOwner: (name: string, phone: string, access: OwnerAccess) => Promise<void>;
   removeOwner: (ownerId: string) => Promise<void>;
-  recordSale: (productId: string, location: Location, quantity: number) => Promise<void>;
   recordPurchasePrice: (productId: string, price: number) => Promise<{ alert: AlertItem | null }>;
   runBackup: () => Promise<void>;
   sendDailyReport: () => Promise<{ preview: string; sent: unknown }>;
@@ -79,6 +81,7 @@ function toState(business: ApiBusiness | null | undefined): AppState {
     owners: business.owners ?? [],
     lastBackup: business.lastBackup ?? null,
     backupHistory: business.backupHistory ?? [],
+    activityHistory: business.activityHistory ?? [],
     connectedStores: business.connectedStores ?? 0,
     ownerWhatsapp: business.ownerWhatsapp ?? null,
     priceThreshold: business.priceThreshold ?? 10,
@@ -138,7 +141,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [homePath, setHomePath] = useState("/dashboard");
 
   const refresh = useCallback(async () => {
-    const res = await fetch("/api/business", { cache: "no-store" });
+    const res = await fetch("/api/business", { cache: "no-store", credentials: "same-origin" });
+    // Transient outage — keep current auth; do not force login.
+    if (res.status === 503) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error || "Server temporarily unavailable");
+    }
     const data = await readJson(res);
     setAuthenticated(Boolean(data.authenticated));
     setNeedsSetup(Boolean(data.needsSetup));
@@ -155,12 +163,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         await refresh();
       } catch (err) {
         if (!cancelled) {
-          setState(defaultState);
-          setAuthenticated(false);
-          setNeedsSetup(false);
-          setPhone(null);
-          setRole(null);
-          setHomePath("/");
+          // Network/503 must not wipe a valid cookie session into a fake logout.
           setError(networkMessage(err));
         }
       } finally {
@@ -328,6 +331,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       quantity: number;
       purchasePrice: number;
       photo?: string;
+      restockThreshold?: number;
+      piecesPerCarton?: number | null;
     }) => {
       await run(async () => {
         const data = await stockAction({ action: "addProduct", ...input });
@@ -369,9 +374,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const recordSale = useCallback(
     async (productId: string, location: Location, quantity: number) => {
-      await run(async () => {
+      return run(async () => {
         const data = await stockAction({ action: "recordSale", productId, location, quantity });
         setState(toState(data.business));
+        return { alert: (data.alert as AlertItem | null) ?? null };
       });
     },
     [run, stockAction],

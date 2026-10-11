@@ -42,6 +42,17 @@ export function formatWhen(iso: string, lang: Lang) {
   }).format(date);
 }
 
+/** Exact date and time for backup history and status (never date-only). */
+export function formatDateTime(iso: string, lang: Lang) {
+  return new Intl.DateTimeFormat(intlLocale[lang], {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(iso));
+}
+
 export function formatAdded(iso: string, lang: Lang) {
   const date = new Intl.DateTimeFormat(intlLocale[lang], {
     day: "numeric",

@@ -23,7 +23,7 @@ export default function DashboardPage() {
     <AppShell>
       <StatusBanner title={status.title} support={status.support} />
 
-      <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm font-medium text-navy/70">
+      <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 px-5 text-sm font-medium text-navy/70 sm:px-6">
         <p className="inline-flex items-center gap-2">
           {state.lastBackup ? <CheckIcon /> : null}
           <span>
@@ -62,7 +62,7 @@ export default function DashboardPage() {
             <Num>{formatMoney(total)}</Num>
           </p>
           {products.length > 0 ? (
-            <div className="mt-4">
+            <div className="mt-4 pe-2 pb-2">
               <TrendLine values={trendSeries(total)} label={t(lang, "trendLabel")} />
               <p className="mt-1 text-xs text-navy/50">{t(lang, "trendCaption")}</p>
             </div>
