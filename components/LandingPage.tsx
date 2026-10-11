@@ -149,9 +149,9 @@ export function LandingPage({ heroBg = null }: { heroBg?: string | null }) {
       </motion.section>
 
       {/* Three steps */}
-      <motion.section id="how" className="scroll-mt-landing border-t border-[#E4DED2] bg-white/50" {...reveal}>
+      <motion.section className="border-t border-[#E4DED2] bg-white/50" {...reveal}>
         <div className="mx-auto w-full max-w-[1180px] px-5 py-24 sm:px-8 lg:py-28">
-          <h2 className="text-[clamp(1.85rem,4vw,3rem)] font-bold tracking-tight text-[#25345F]">
+          <h2 id="how" className="scroll-mt-landing text-[clamp(1.85rem,4vw,3rem)] font-bold tracking-tight text-[#25345F]">
             {t(lang, "landingHowTitle")}
           </h2>
           <p className="mt-4 max-w-xl text-base text-[#70758A] sm:text-lg">{t(lang, "landingHowSupport")}</p>
@@ -172,12 +172,12 @@ export function LandingPage({ heroBg = null }: { heroBg?: string | null }) {
       </motion.section>
 
       {/* Features cluster */}
-      <div id="features" className="scroll-mt-landing">
+      <div>
         {/* Items showcase */}
         <motion.section className="border-t border-[#E4DED2]" {...reveal}>
           <div className="mx-auto grid w-full max-w-[1180px] gap-12 px-5 py-24 sm:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:gap-16 lg:py-28">
             <div>
-              <h2 className="text-[clamp(1.85rem,4vw,3rem)] font-bold tracking-tight text-[#25345F]">
+              <h2 id="features" className="scroll-mt-landing text-[clamp(1.85rem,4vw,3rem)] font-bold tracking-tight text-[#25345F]">
                 {t(lang, "landingItemsTitle")}
               </h2>
               <p className="mt-4 max-w-md text-base leading-relaxed text-[#70758A] sm:text-lg">
@@ -223,9 +223,9 @@ export function LandingPage({ heroBg = null }: { heroBg?: string | null }) {
       </div>
 
       {/* Staff access */}
-      <motion.section id="staff" className="scroll-mt-landing border-t border-[#E4DED2] bg-white/45" {...reveal}>
+      <motion.section className="border-t border-[#E4DED2] bg-white/45" {...reveal}>
         <div className="mx-auto w-full max-w-[1180px] px-5 py-24 sm:px-8 lg:py-28">
-          <h2 className="max-w-2xl text-[clamp(1.85rem,4vw,3rem)] font-bold tracking-tight text-[#25345F]">
+          <h2 id="staff" className="scroll-mt-landing max-w-2xl text-[clamp(1.85rem,4vw,3rem)] font-bold tracking-tight text-[#25345F]">
             {t(lang, "landingStaffTitle")}
           </h2>
           <div className="mt-12 grid gap-5 md:grid-cols-2">
@@ -254,9 +254,9 @@ export function LandingPage({ heroBg = null }: { heroBg?: string | null }) {
       </motion.section>
 
       {/* Why / made for real shops */}
-      <motion.section id="why" className="scroll-mt-landing border-t border-[#E4DED2]" {...reveal}>
+      <motion.section className="border-t border-[#E4DED2]" {...reveal}>
         <div className="mx-auto w-full max-w-[1180px] px-5 py-24 sm:px-8 lg:py-28">
-          <h2 className="text-[clamp(1.85rem,4vw,3rem)] font-bold tracking-tight text-[#25345F]">
+          <h2 id="why" className="scroll-mt-landing text-[clamp(1.85rem,4vw,3rem)] font-bold tracking-tight text-[#25345F]">
             {t(lang, "landingWhyTitle")}
           </h2>
           <p className="mt-4 max-w-2xl text-base leading-relaxed text-[#70758A] sm:text-lg">
@@ -300,9 +300,9 @@ export function LandingPage({ heroBg = null }: { heroBg?: string | null }) {
       </motion.section>
 
       {/* FAQ */}
-      <motion.section id="faq" className="scroll-mt-landing border-t border-[#E4DED2]" {...reveal}>
+      <motion.section className="border-t border-[#E4DED2]" {...reveal}>
         <div className="mx-auto w-full max-w-[1180px] px-5 py-24 sm:px-8 lg:py-28">
-          <h2 className="text-[clamp(1.85rem,4vw,3rem)] font-bold tracking-tight text-[#25345F]">
+          <h2 id="faq" className="scroll-mt-landing text-[clamp(1.85rem,4vw,3rem)] font-bold tracking-tight text-[#25345F]">
             {t(lang, "landingFaqTitle")}
           </h2>
           <LandingFaq lang={lang} />

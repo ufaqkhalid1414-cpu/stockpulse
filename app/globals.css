@@ -33,13 +33,18 @@ body {
     radial-gradient(ellipse 70% 55% at 75% 35%, rgba(217, 166, 58, 0.14), transparent 70%);
 }
 
+/* Sticky header is 68px — keep headings just under it (not section padding). */
 .scroll-mt-landing {
-  scroll-margin-top: 5.5rem;
+  scroll-margin-top: 5rem;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  html:focus-within {
-    scroll-behavior: smooth;
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
   }
 }
 
