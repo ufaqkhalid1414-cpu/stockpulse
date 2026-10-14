@@ -46,7 +46,7 @@ export function LandingHeader({ lang, homeHref = "/" }: { lang: Lang; homeHref?:
   }
 
   return (
-    <header className="sticky top-0 z-30 border-b border-[#E4DED2]/90 bg-[#F7F3EA]/90 backdrop-blur-md">
+    <header className="sticky top-0 z-30 border-b border-[#E4DED2]/90 bg-[#F7F3EA]/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
       <div className="mx-auto flex h-[64px] w-full max-w-[1180px] items-center justify-between gap-2 px-4 sm:h-[76px] sm:gap-4 sm:px-8 md:h-[84px]">
         {/* Leave room for Sign in + menu on phones so the logo never overlaps them */}
         <StockPulseLogo href={homeHref} className="min-w-0 flex-1 basis-0 sm:flex-none sm:basis-auto" />

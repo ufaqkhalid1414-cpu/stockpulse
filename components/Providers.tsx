@@ -3,12 +3,14 @@
 import { useEffect } from "react";
 import { Gate } from "@/components/Gate";
 import { PageTransition } from "@/components/PageTransition";
+import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import { languageById } from "@/lib/i18n";
 import { useStock } from "@/lib/store";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <StoreBridge>
+      <ServiceWorkerRegister />
       <Gate>
         <PageTransition>{children}</PageTransition>
       </Gate>

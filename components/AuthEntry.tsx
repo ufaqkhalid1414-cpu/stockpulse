@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { InstallStockPulse } from "@/components/InstallStockPulse";
 import { LanguageMenu } from "@/components/LanguageMenu";
 import { Button, Field } from "@/components/ui";
 import { VoiceInput } from "@/components/VoiceInput";
@@ -247,6 +248,9 @@ export function AuthEntry() {
             >
               {t(lang, "loginForgotPassword")}
             </button>
+          </div>
+          <div className="mt-6">
+            <InstallStockPulse lang={lang} />
           </div>
           {googleConfigured === false ? (
             <p className="mt-4 text-xs leading-relaxed text-navy/50">{t(lang, "loginGoogleNotConfigured")}</p>

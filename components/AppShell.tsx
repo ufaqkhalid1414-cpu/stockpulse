@@ -29,7 +29,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-dvh">
-      <header className="sticky top-0 z-40 border-b border-navy/10 bg-cream/90 backdrop-blur-md">
+      <header className="sticky top-0 z-40 border-b border-navy/10 bg-cream/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
         <div className="mx-auto w-full max-w-[1040px] px-5 sm:px-8">
           <div className="flex items-start justify-between gap-3 pt-4">
             <div className="min-w-0">
@@ -81,7 +81,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-      <main id="page-top" className="mx-auto w-full max-w-[1040px] px-5 pb-24 pt-6 sm:px-8">
+      <main
+        id="page-top"
+        className="mx-auto w-full max-w-[1040px] px-5 pb-[max(6rem,calc(6rem+env(safe-area-inset-bottom)))] pt-6 sm:px-8"
+      >
         {state.isSample && !isStaff ? (
           <div className="mb-4 rounded-xl border border-gold/40 bg-gold/15 px-4 py-3 text-sm text-navy" role="status">
             {t(lang, "sampleBanner")}

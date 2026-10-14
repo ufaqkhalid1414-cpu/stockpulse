@@ -537,6 +537,8 @@ const en = {
   loginGoogleNotConfigured:
     "Google login needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on the server (free Google Cloud OAuth setup).",
   loginGoogleFailed: "Google sign-in didn't complete. Try again or use another method.",
+  installStockPulse: "Install StockPulse",
+  installIosHint: "To install: tap Share, then Add to Home Screen.",
   loginWhatsapp: "Your WhatsApp number",
   loginWhatsappHint: "Include the country code. Example: +92 300 1234567",
   sendCode: "Send code on WhatsApp",
@@ -628,6 +630,8 @@ const ur = pack({
   voiceSpeak: "اس خانے کے لیے بولیں",
   voiceListening: "سن رہا ہے… روکنے کے لیے دوبارہ دبائیں",
   voiceUnsupported: "اس براؤزر میں آواز سے لکھنا دستیاب نہیں",
+  installStockPulse: "اسٹاک پلس انسٹال کریں",
+  installIosHint: "انسٹال کرنے کے لیے: Share دبائیں، پھر Add to Home Screen۔",
   loginTitle: "لاگ اِن",
   loginBody: "واٹس ایپ، گوگل، یا ای میل سے سائن اِن کریں۔",
   loginWithWhatsapp: "واٹس ایپ سے جاری رکھیں",
@@ -813,6 +817,8 @@ const ur = pack({
 });
 
 const zh = pack({
+  installStockPulse: "安装 StockPulse",
+  installIosHint: "安装方式：点分享，然后选“添加到主屏幕”。",
   setupTitle: "用白话看清你的库存",
   setupBody: "StockPulse 让仓库和店里的货一目了然。",
   businessName: "店名",
@@ -949,6 +955,8 @@ const zh = pack({
 });
 
 const de = pack({
+  installStockPulse: "StockPulse installieren",
+  installIosHint: "Zum Installieren: Teilen tippen, dann „Zum Home-Bildschirm“.",
   setupTitle: "Sehen Sie Ihren Bestand in klaren Worten",
   setupBody: "StockPulse hält ein ruhiges Bild von Lager und Laden bereit.",
   businessName: "Name des Geschäfts",
@@ -1085,6 +1093,8 @@ const de = pack({
 });
 
 const ar = pack({
+  installStockPulse: "تثبيت StockPulse",
+  installIosHint: "للتثبيت: اضغط مشاركة ثم أضف إلى الشاشة الرئيسية.",
   setupTitle: "اطّلع على مخزونك بكلام واضح",
   setupBody: "StockPulse يبقي صورة هادئة لما لديك في المستودع وفي المحل.",
   businessName: "اسم النشاط",
@@ -1221,6 +1231,8 @@ const ar = pack({
 });
 
 const es = pack({
+  installStockPulse: "Instalar StockPulse",
+  installIosHint: "Para instalar: toca Compartir y luego Añadir a pantalla de inicio.",
   setupTitle: "Mira tu stock con palabras claras",
   setupBody: "StockPulse guarda una imagen tranquila de lo que tienes en el almacén y en la tienda.",
   businessName: "Nombre del negocio",
@@ -1357,6 +1369,8 @@ const es = pack({
 });
 
 const fr = pack({
+  installStockPulse: "Installer StockPulse",
+  installIosHint: "Pour installer : touchez Partager, puis Sur l’écran d’accueil.",
   setupTitle: "Voyez votre stock en mots simples",
   setupBody: "StockPulse garde une image calme de ce que vous avez à l'entrepôt et en magasin.",
   businessName: "Nom du commerce",
@@ -1493,6 +1507,8 @@ const fr = pack({
 });
 
 const hi = pack({
+  installStockPulse: "StockPulse इंस्टॉल करें",
+  installIosHint: "इंस्टॉल करने के लिए: Share टैप करें, फिर Add to Home Screen।",
   setupTitle: "अपना स्टॉक आसान शब्दों में देखें",
   setupBody: "StockPulse गोदाम और दुकान दोनों का एक शांत हिसाब रखता है।",
   businessName: "कारोबार का नाम",
@@ -1629,6 +1645,8 @@ const hi = pack({
 });
 
 const pt = pack({
+  installStockPulse: "Instalar StockPulse",
+  installIosHint: "Para instalar: toque em Compartilhar e depois Adicionar à Tela de Início.",
   setupTitle: "Veja seu estoque em palavras simples",
   setupBody: "O StockPulse guarda uma imagem calma do que você tem no depósito e na loja.",
   businessName: "Nome do negócio",

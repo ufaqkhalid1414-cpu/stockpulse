@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { InstallStockPulse } from "@/components/InstallStockPulse";
 import { LanguageMenu } from "@/components/LanguageMenu";
 import { AppLink, Button, CheckIcon, CrossIcon, Field, Lead } from "@/components/ui";
 import { VoiceInput } from "@/components/VoiceInput";
@@ -364,6 +365,11 @@ export default function SettingsPage() {
           ) : null}
         </div>
         {isOwner ? <p className="text-xs text-navy/55">{t(lang, "logOutEverywhereSupport")}</p> : null}
+        {isOwner ? (
+          <div className="mt-4 max-w-sm">
+            <InstallStockPulse lang={lang} />
+          </div>
+        ) : null}
       </div>
 
       {isOwner ? (
