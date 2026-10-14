@@ -9,7 +9,12 @@ import {
 } from "@/lib/stock-math";
 
 function qtys(overrides: Partial<LocationQtys> = {}): LocationQtys {
-  return { warehouseQty: 10, shopQty: 5, onlineQty: 3, ...overrides };
+  const warehouseQty = overrides.warehouseQty ?? 10;
+  const shopQty = overrides.shopQty ?? 5;
+  const onlineQty = overrides.onlineQty ?? 3;
+  const stockByPlace =
+    overrides.stockByPlace ?? { warehouse: warehouseQty, shop: shopQty, online: onlineQty };
+  return { warehouseQty, shopQty, onlineQty, stockByPlace };
 }
 
 describe("stock-math.ts — totalAcrossLocations", () => {

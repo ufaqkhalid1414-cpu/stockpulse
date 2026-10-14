@@ -75,7 +75,7 @@ describe("Multiple warehouses — places helpers", () => {
         shopQty: 0,
         onlineQty: 0,
       },
-    ] as Product[];
+    ] as unknown as Product[];
     assert.equal(placeHasNoStock(products, "wh-2"), false);
     assert.equal(placeHasNoStock(products, "warehouse"), true);
   });

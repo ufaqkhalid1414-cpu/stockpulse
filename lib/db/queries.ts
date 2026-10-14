@@ -687,7 +687,12 @@ export async function addProduct(
     piecesPerCarton: ppc,
   };
   const product = mapProductDoc(id, productDoc, [firstEntry]);
-  const locationQty = Number(product.stockByPlace[input.location] ?? 0);
+  const stockMap = product.stockByPlace ?? {
+    warehouse: product.warehouseQty,
+    shop: product.shopQty,
+    online: product.onlineQty,
+  };
+  const locationQty = Number(stockMap[input.location] ?? 0);
   return {
     product,
     audit: {
@@ -696,7 +701,7 @@ export async function addProduct(
       previousLocationQty: 0,
       newLocationQty: locationQty,
       previousTotal: 0,
-      newTotal: Object.values(product.stockByPlace).reduce((s, n) => s + Number(n || 0), 0),
+      newTotal: Object.values(stockMap).reduce((s, n) => s + Number(n || 0), 0),
       purchasePrice: input.purchasePrice,
       restockThreshold: threshold,
     },

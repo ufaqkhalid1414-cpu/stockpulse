@@ -23,7 +23,12 @@ import { allowedStockAction } from "@/lib/permissions";
 import type { AccessRole } from "@/lib/access";
 
 function qtys(overrides: Partial<LocationQtys> = {}): LocationQtys {
-  return { warehouseQty: 50, shopQty: 20, onlineQty: 10, ...overrides };
+  const warehouseQty = overrides.warehouseQty ?? 50;
+  const shopQty = overrides.shopQty ?? 20;
+  const onlineQty = overrides.onlineQty ?? 10;
+  const stockByPlace =
+    overrides.stockByPlace ?? { warehouse: warehouseQty, shop: shopQty, online: onlineQty };
+  return { warehouseQty, shopQty, onlineQty, stockByPlace };
 }
 
 describe("Prompt 15 — the exact walkthrough from the spec (50+20+10=80; add 5 shop=85; remove 10 warehouse=70)", () => {
