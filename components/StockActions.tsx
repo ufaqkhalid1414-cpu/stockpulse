@@ -210,17 +210,12 @@ function StockActionSheet({ product, mode, onClose }: { product: Product; mode: 
     }
   }
 
-  const locationOptions = (places.length
-    ? places
-    : [
-        { id: "warehouse", name: locationLabel(lang, "warehouse") },
-        { id: "shop", name: locationLabel(lang, "shop") },
-        { id: "online", name: locationLabel(lang, "online") },
-      ]
-  ).map((place) => ({
-    value: place.id,
-    label: "name" in place ? place.name : locationLabel(lang, place.id, places),
-  }));
+  const locationOptions = places.length
+    ? places.map((place) => ({ value: place.id, label: place.name }))
+    : (["warehouse", "shop", "online"] as const).map((id) => ({
+        value: id,
+        label: locationLabel(lang, id),
+      }));
   const saving = status === "saving";
 
   let saveLabel = t(lang, "save");
