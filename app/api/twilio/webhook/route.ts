@@ -1,22 +1,59 @@
 import { NextResponse } from "next/server";
-import { ensureDbReady } from "@/lib/db";
-import { findBusinessByWhatsapp } from "@/lib/db/queries";
+import { ensureDbReady, persistDb } from "@/lib/db";
+import { findBusinessByWhatsapp, findOwnerByPhone, updateOwnerNotificationPrefs } from "@/lib/db/queries";
+import { parseStopStart } from "@/lib/notification-prefs";
 import { answerWhatsAppQuestion } from "@/lib/whatsapp-qa";
-import { downloadTwilioMedia, sendWhatsApp, transcribeAudio, twilioConfigured } from "@/lib/twilio";
+import { downloadTwilioMedia, sendWhatsApp, transcribeAudio, twilioConfigured, verifyTwilioSignature } from "@/lib/twilio";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   await ensureDbReady();
   const form = await request.formData();
-  const from = String(form.get("From") || "");
-  const body = String(form.get("Body") || "").trim();
-  const numMedia = Number(form.get("NumMedia") || 0);
-  const mediaUrl = numMedia > 0 ? String(form.get("MediaUrl0") || "") : "";
-  const mediaType = numMedia > 0 ? String(form.get("MediaContentType0") || "") : "";
+  const params: Record<string, string> = {};
+  form.forEach((value, key) => {
+    params[key] = String(value);
+  });
+
+  const signature = request.headers.get("x-twilio-signature");
+  if (!verifyTwilioSignature(request.url, params, signature)) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 403 });
+  }
+
+  const from = params.From || "";
+  const body = String(params.Body || "").trim();
+  const numMedia = Number(params.NumMedia || 0);
+  const mediaUrl = numMedia > 0 ? String(params.MediaUrl0 || "") : "";
+  const mediaType = numMedia > 0 ? String(params.MediaContentType0 || "") : "";
 
   const phone = from.replace(/^whatsapp:/i, "");
   const business = await findBusinessByWhatsapp(phone);
+
+  // STOP / START — pause or resume non-essential messages (OTP never affected)
+  const stopStart = parseStopStart(body);
+  if (stopStart && business) {
+    const owner = await findOwnerByPhone(business.id, phone);
+    if (owner) {
+      if (stopStart === "stop") {
+        await updateOwnerNotificationPrefs(business.id, owner.id, { pauseAll: true });
+        await persistDb();
+        const msg =
+          business.language === "ur"
+            ? "ٹھیک ہے — غیر ضروری پیغامات بند کر دیے گئے۔ START بھیجیں تو دوبارہ شروع ہوں گے۔"
+            : "Got it — non-essential messages paused. Reply START to resume.";
+        if (twilioConfigured()) await sendWhatsApp(phone, msg).catch(() => null);
+        return twiml(msg);
+      }
+      await updateOwnerNotificationPrefs(business.id, owner.id, { pauseAll: false });
+      await persistDb();
+      const msg =
+        business.language === "ur"
+          ? "ٹھیک ہے — پیغامات دوبارہ شروع ہیں۔"
+          : "Got it — messages resumed.";
+      if (twilioConfigured()) await sendWhatsApp(phone, msg).catch(() => null);
+      return twiml(msg);
+    }
+  }
 
   let question = body;
   if ((!question || mediaType.startsWith("audio/")) && mediaUrl) {

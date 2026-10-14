@@ -3,6 +3,10 @@
   "framework": "nextjs",
   "crons": [
     {
+      "path": "/api/cron/scheduled-messages",
+      "schedule": "*/15 * * * *"
+    },
+    {
       "path": "/api/cron/monthly-chart",
       "schedule": "5 17 28-31 * *"
     },

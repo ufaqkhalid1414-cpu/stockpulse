@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { LanguageMenu } from "@/components/LanguageMenu";
+import { StockPulseLogo } from "@/components/landing/StockPulseLogo";
 import { Button } from "@/components/ui";
 import { t, type Lang } from "@/lib/i18n";
 
@@ -46,13 +47,12 @@ export function LandingHeader({ lang, homeHref = "/" }: { lang: Lang; homeHref?:
 
   return (
     <header className="sticky top-0 z-30 border-b border-[#E4DED2]/90 bg-[#F7F3EA]/90 backdrop-blur-md">
-      <div className="mx-auto flex h-[68px] w-full max-w-[1180px] items-center justify-between gap-3 px-5 sm:px-8">
-        <Link href={homeHref} className="text-base font-bold tracking-tight text-[#25345F]">
-          StockPulse
-        </Link>
+      <div className="mx-auto flex h-[64px] w-full max-w-[1180px] items-center justify-between gap-2 px-4 sm:h-[76px] sm:gap-4 sm:px-8 md:h-[84px]">
+        {/* Leave room for Sign in + menu on phones so the logo never overlaps them */}
+        <StockPulseLogo href={homeHref} className="min-w-0 flex-1 basis-0 sm:flex-none sm:basis-auto" />
 
         <nav
-          className="hidden items-center gap-3 text-sm font-medium text-[#70758A] xl:gap-5 lg:flex"
+          className="hidden items-center gap-3 self-center text-sm font-medium text-[#70758A] xl:gap-5 lg:flex"
           aria-label="Page"
         >
           {items.map((item) => (
@@ -72,12 +72,13 @@ export function LandingHeader({ lang, homeHref = "/" }: { lang: Lang; homeHref?:
           ))}
         </nav>
 
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="hidden sm:block">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+          <div className="hidden sm:flex sm:items-center">
             <LanguageMenu align="end" />
           </div>
-          <Button href="/login" className="px-3.5 py-2.5 text-xs sm:px-4 sm:text-sm">
-            {t(lang, "landingCta")}
+          <Button href="/login" className="inline-flex h-9 items-center whitespace-nowrap px-3 text-xs sm:h-10 sm:px-4 sm:text-sm">
+            <span className="sm:hidden">{t(lang, "landingSignIn")}</span>
+            <span className="hidden sm:inline">{t(lang, "landingCta")}</span>
           </Button>
           <button
             type="button"

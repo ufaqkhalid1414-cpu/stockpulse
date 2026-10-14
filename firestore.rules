@@ -1,8 +1,80 @@
 rules_version = '2';
+
+// ============================================================================
+// StockPulse — Firestore Security Rules
+// ============================================================================
+//
+// Architecture: StockPulse is an Admin-SDK-only application. There is no
+// Firebase client SDK anywhere in the app (web or mobile) — every read and
+// write goes through Next.js server routes using `firebase-admin`
+// (see lib/firebase/admin.ts, lib/db/index.ts, lib/db/queries.ts). The
+// Admin SDK authenticates with a service-account credential and, by design,
+// BYPASSES these rules entirely. That means these rules are NOT the
+// enforcement layer for multi-tenant isolation in this app — they are a
+// defense-in-depth backstop in case a client SDK key is ever introduced
+// (mobile app, browser extension, etc.) by accident or in the future.
+//
+// Multi-tenant data model (all Admin-SDK-only):
+//
+//   businesses/{businessId}
+//     name, language, ownerWhatsapp, priceThreshold, connectedStores,
+//     lastBackup, createdAt, isSample
+//   businesses/{businessId}/products/{productId}
+//     name, category, variant, warehouseQty, shopQty, onlineQty,
+//     purchasePrice, restockThreshold, piecesPerCarton, photo,
+//     shopifyVariantId, createdAt, lowStockAlerted
+//   businesses/{businessId}/priceHistory/{entryId}
+//     productId, price, recordedAt
+//   businesses/{businessId}/sales/{saleId}
+//     productId, location, quantity, unitPrice, recordedAt
+//   businesses/{businessId}/owners/{ownerId}
+//     name, phone, accessType, isPrimary, addedAt
+//   businesses/{businessId}/staff/{staffId}
+//     name, phone, permission, addedAt
+//   businesses/{businessId}/alerts/{alertId}
+//     productId, kind, title, body, createdAt, seen
+//   businesses/{businessId}/backupHistory/{entryId}
+//     stampedAt, status, storagePath, error
+//   businesses/{businessId}/activity/{entryId}
+//     category, action, actorPhone, actorName, actorRole, ... (see lib/types.ts)
+//   businesses/{businessId}/shopify/connection
+//     shopDomain, accessToken, connectedAt, lastSyncAt, lastSyncError, lastSyncCount
+//   businesses/{businessId}/idempotencyKeys/{key}            (Prompt 15)
+//     businessId, action, result, createdAt — 24h idempotency replay cache
+//     for addStock/recordSale/moveStock/correctCount.
+//   businesses/{businessId}/alertThrottle/{actorPhone__productId}  (Prompt 15)
+//     actorPhone, productId, lastSentAt — throttles the owner WhatsApp alert
+//     for blocked below-zero attempts to one per actor+product per 30 min.
+//
+//   phoneIndex/{phoneDocId}            — WhatsApp phone → { businessId, role } lookup
+//   sessions/{tokenHash}               — OTP session tokens (never exposed to clients as Firestore docs)
+//   otpRequests / otpRateLimits / ...  — OTP issuance + rate-limiting bookkeeping
+//
+// How tenant isolation is actually enforced (since these rules never run for
+// the Admin SDK):
+//
+//   (a) Admin-only writes: no document in `businesses/{businessId}/...` is
+//       ever reachable from a browser or mobile client — there is no Firebase
+//       client SDK initialized anywhere in this codebase. Every mutation is a
+//       server route handler running on Next.js's Node runtime.
+//
+//   (b) Server session businessId scoping: every API route resolves the
+//       caller's `businessId` server-side from their session cookie via
+//       `requireAccess()` / `findMembershipByPhone()` (lib/access.ts,
+//       lib/session.ts) — never from a client-supplied id/body param. All
+//       Firestore reads/writes in lib/db/queries.ts take `businessId` as an
+//       argument that is always `ctx.business.id` from that resolved
+//       session, so one tenant's request can never touch
+//       `businesses/{anotherBusinessId}/...` (see docs/PROMPT-14-SECURITY.md
+//       §2.K, verified by grep: no route reads a client-supplied businessId).
+//
+// Given (a) and (b), "deny all client access" below is the CORRECT rule for
+// this architecture — it closes the one scenario these rules can actually
+// prevent (a stray client SDK key reading/writing Firestore directly,
+// bypassing the server's businessId scoping entirely), while the real
+// isolation guarantee lives in the server code referenced above.
 service cloud.firestore {
   match /databases/{database}/documents {
-    // StockPulse uses Firebase Admin SDK on the server only.
-    // Deny all client SDK access.
     match /{document=**} {
       allow read, write: if false;
     }

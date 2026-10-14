@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
 import { homePathForRole } from "@/lib/access";
+import { jsonNoStore } from "@/lib/api-response";
 import { ensureDbReady, persistDb } from "@/lib/db";
 import { findMembershipByPhone } from "@/lib/db/queries";
+import { logError, logInfo, logWarn } from "@/lib/logger";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
 import {
   createOtp,
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
     if (body.action === "request") {
       const phone = normalizePhone(String(body.phone || ""));
       if (!isValidPhone(phone)) {
-        return NextResponse.json(
+        return jsonNoStore(
           { error: "Enter a WhatsApp number with country code, e.g. +92 300 1234567" },
           { status: 400 },
         );
@@ -38,7 +39,8 @@ export async function POST(request: Request) {
       try {
         ({ code } = await createOtp(phone));
       } catch (err) {
-        return NextResponse.json(
+        logWarn("otp_request_failed", { phone, reason: err instanceof Error ? err.message : "rate_limited" });
+        return jsonNoStore(
           { error: err instanceof Error ? err.message : "Could not create code" },
           { status: 429 },
         );
@@ -50,7 +52,8 @@ export async function POST(request: Request) {
         try {
           await sendWhatsApp(phone, message);
         } catch (err) {
-          return NextResponse.json(
+          logWarn("otp_request_failed", { phone, reason: "twilio_send_error" });
+          return jsonNoStore(
             {
               error:
                 err instanceof Error
@@ -61,13 +64,15 @@ export async function POST(request: Request) {
           );
         }
         await persistDb();
-        return NextResponse.json({ ok: true, sent: true });
+        logInfo("otp_requested", { phone, method: "whatsapp" }); // code itself is never logged
+        return jsonNoStore({ ok: true, sent: true });
       }
 
       if (otpDevModeEnabled()) {
-        console.warn("[otp] Twilio not configured — DEV code for", phone, "→", code);
+        // Never log the OTP code itself — the UI reads it from `devCode` below.
+        logInfo("otp_requested", { phone, method: "dev_mode" });
         await persistDb();
-        return NextResponse.json({
+        return jsonNoStore({
           ok: true,
           sent: false,
           devCode: code,
@@ -75,7 +80,8 @@ export async function POST(request: Request) {
         });
       }
 
-      return NextResponse.json(
+      logWarn("otp_request_failed", { phone, reason: "whatsapp_not_configured" });
+      return jsonNoStore(
         { error: "WhatsApp login is not configured on this server yet (missing Twilio credentials)." },
         { status: 503 },
       );
@@ -85,22 +91,27 @@ export async function POST(request: Request) {
       const phone = normalizePhone(String(body.phone || ""));
       const code = String(body.code || "").trim();
       if (!isValidPhone(phone)) {
-        return NextResponse.json({ error: "Enter a valid WhatsApp number with country code." }, { status: 400 });
+        return jsonNoStore({ error: "Enter a valid WhatsApp number with country code." }, { status: 400 });
       }
       if (!/^\d{6}$/.test(code)) {
-        return NextResponse.json({ error: "Enter the 6-digit code from WhatsApp." }, { status: 400 });
+        return jsonNoStore({ error: "Enter the 6-digit code from WhatsApp." }, { status: 400 });
       }
+      // `code` is a request body value only — it is never passed to the logger below.
       if (!await verifyOtp(phone, code)) {
-        return NextResponse.json({ error: "That code is wrong or expired. Request a new one." }, { status: 401 });
+        logWarn("otp_verify_failed", { phone });
+        return jsonNoStore({ error: "That code is wrong or expired. Request a new one." }, { status: 401 });
       }
 
       const existing = await resolveBusinessForPhone(phone);
-      const created = await createSession(phone, existing?.id ?? null);
-      await persistDb();
-
       const membership = await findMembershipByPhone(phone);
+      const created = await createSession(phone, existing?.id ?? null, {
+        name: membership?.name ?? null,
+        role: membership?.role ?? null,
+      });
+      await persistDb();
+      logInfo("otp_verified", { phone, businessId: existing?.id ?? null, role: membership?.role ?? null });
 
-      const res = NextResponse.json({
+      const res = jsonNoStore({
         ok: true,
         authenticated: true,
         needsSetup: !existing,
@@ -114,10 +125,10 @@ export async function POST(request: Request) {
       return res;
     }
 
-    return NextResponse.json({ error: "Unknown action" }, { status: 400 });
+    return jsonNoStore({ error: "Unknown action" }, { status: 400 });
   } catch (err) {
-    console.error("[api/auth/otp]", err);
-    return NextResponse.json(
+    logError("otp_route_error", {}, err);
+    return jsonNoStore(
       { error: err instanceof Error ? err.message : "Authentication failed" },
       { status: 500 },
     );

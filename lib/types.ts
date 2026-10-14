@@ -1,20 +1,52 @@
 import type { Lang } from "@/lib/i18n";
 
-export type Location = "warehouse" | "shop" | "online";
+/** Place id: builtin "warehouse" | "shop" | "online", or an extra warehouse id. */
+export type Location = string;
 
+export type StockPlaceKind = "warehouse" | "shop" | "online";
+
+/** A stock place on the business (warehouses can be many; shop/online stay one each). */
+export type StockPlace = {
+  id: string;
+  name: string;
+  kind: StockPlaceKind;
+};
+
+/** Legacy month-folded point — still used where old charts expect it. */
 export type PricePoint = {
   month: string;
   price: number;
 };
+
+/** One stock-entry price row (Prompt 16 Part B). Price is always per piece underneath. */
+export type PriceEntry = {
+  id: string;
+  /** ISO timestamp when this purchase price was recorded. */
+  recordedAt: string;
+  /** Purchase price per piece at the time of entry. */
+  pricePerPiece: number;
+  /**
+   * Carton size saved with this entry so later edits to the product carton
+   * size never rewrite history. null = piece-only at the time.
+   */
+  piecesPerCarton: number | null;
+};
+
+export type PriceCompareUnit = "piece" | "carton";
 
 export type Product = {
   id: string;
   name: string;
   category: string;
   variant: string;
+  /** Mirror of stockByPlace.warehouse — kept for older callers. */
   warehouseQty: number;
+  /** Mirror of stockByPlace.shop. */
   shopQty: number;
+  /** Mirror of stockByPlace.online. */
   onlineQty: number;
+  /** Qty per place id (warehouses + shop + online). Source of truth when present. */
+  stockByPlace?: Record<string, number>;
   /** Always stored as price per piece (smallest sellable unit). */
   purchasePrice: number;
   restockThreshold: number;
@@ -23,9 +55,25 @@ export type Product = {
    * null / omitted = piece-only product (no carton UI anywhere).
    */
   piecesPerCarton: number | null;
+  /**
+   * Owner's chosen unit for price comparison charts/alerts (Prompt 16 Part B).
+   * Default: unit used at the product's first stock entry.
+   */
+  priceCompareUnit: PriceCompareUnit;
+  /** Entry-level history (newest last in array for chart helpers). */
+  priceEntries: PriceEntry[];
+  /** Month-folded view derived from entries (compat). */
   priceHistory: PricePoint[];
   photo?: string;
   shopifyVariantId?: string | null;
+  /** Soft-deleted — excluded from lists/alerts/reports by default. Stock history is kept. */
+  archived?: boolean;
+  /** Prompt 16 Part A — location flagged until Correct count clears it. */
+  needsRecountWarehouse?: boolean;
+  needsRecountShop?: boolean;
+  needsRecountOnline?: boolean;
+  /** Recount flags per place id (source of truth when present). */
+  recountByPlace?: Record<string, boolean>;
 };
 
 /** Public Shopify connection status (token never sent to the client). */
@@ -38,11 +86,18 @@ export type ShopifyConnectionPublic = {
   lastSyncCount: number;
 };
 
-export type Permission = "add" | "view";
+/** Staff dropdown: one capability each (view / add stock / record sale / move). */
+export type Permission = "view" | "add" | "sell" | "move";
 
 export type OwnerAccess = "equal" | "co";
 
-export type AccessRole = "equal_owner" | "co_owner" | "staff_add" | "staff_view";
+export type AccessRole =
+  | "equal_owner"
+  | "co_owner"
+  | "staff_view"
+  | "staff_add"
+  | "staff_sell"
+  | "staff_move";
 
 export type StaffMember = {
   id: string;
@@ -56,9 +111,21 @@ export type BusinessOwner = {
   id: string;
   name: string;
   phone: string;
+  /** Optional — Google / email login owners. */
+  email?: string | null;
   access: OwnerAccess;
   isPrimary: boolean;
   addedAt: string;
+  /** Prompt 18 — per-person notification switches (owners/co-owners only). */
+  notificationPrefs?: {
+    dailyReport: boolean;
+    dailyReportTime: string;
+    priceAlerts: boolean;
+    lowStockAlerts: boolean;
+    recountAlerts: boolean;
+    monthlyChart: boolean;
+    pauseAll: boolean;
+  };
 };
 
 export type AlertItem = {
@@ -77,6 +144,8 @@ export type AppState = {
   businessName: string;
   language: Lang;
   products: Product[];
+  /** Stock places for this business (warehouses + shop + online). */
+  places: StockPlace[];
   staff: StaffMember[];
   owners: BusinessOwner[];
   lastBackup: string | null;
@@ -88,6 +157,8 @@ export type AppState = {
   alerts: AlertItem[];
   isSample?: boolean;
   shopify?: ShopifyConnectionPublic;
+  /** Owner-only — archived products, hidden from the main `products` list. */
+  archivedProducts?: Product[];
 };
 
 export type BackupHistoryItem = {
@@ -98,16 +169,26 @@ export type BackupHistoryItem = {
   error: string | null;
 };
 
-export type ActivityCategory = "stock" | "prices" | "products" | "staff" | "settings";
+export type ActivityCategory = "stock" | "prices" | "products" | "staff" | "settings" | "security";
 
 export type ActivityAction =
   | "product_added"
   | "stock_deducted"
+  | "stock_added"
+  | "stock_moved"
+  | "stock_corrected"
+  | "stock_blocked"
+  | "product_edited"
+  | "product_archived"
+  | "product_restored"
   | "purchase_price_changed"
   | "staff_added"
+  | "staff_removed"
+  | "staff_permission_changed"
   | "owner_added"
   | "owner_removed"
-  | "settings_changed";
+  | "settings_changed"
+  | "access_blocked";
 
 /** Tenant-scoped accountability log (WHO / WHAT / WHERE / WHEN / before→after). */
 export type ActivityHistoryItem = {

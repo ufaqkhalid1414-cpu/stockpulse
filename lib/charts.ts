@@ -2,14 +2,16 @@ import fs from "fs";
 import path from "path";
 import {
   getMonthlyPurchasePrices,
-  getOwnerPhones,
+  getOwners,
   getProduct,
   getProducts,
   getRecentPurchasePrices,
   listBusinesses,
   type MonthlyPricePoint,
 } from "@/lib/db/queries";
-import { sendWhatsApp } from "@/lib/twilio";
+import { maySendNotification, normalizeNotificationPrefs } from "@/lib/notification-prefs";
+import { recordAndSendWhatsApp } from "@/lib/outbound";
+import { normalizePhone } from "@/lib/phone";
 
 /** True on the last calendar day of the month (UTC). Used by the month-end cron. */
 export function isLastDayOfMonth(now = new Date()) {
@@ -67,9 +69,12 @@ export async function sendMonthlyChartsForAllBusinesses(appBaseUrl: string) {
   }[] = [];
 
   for (const business of await listBusinesses()) {
-    const ownerPhones = await getOwnerPhones(business.id);
-    if (ownerPhones.length === 0) {
-      results.push({ businessId: business.id, name: business.name, sent: 0, skipped: "no owners" });
+    const owners = await getOwners(business.id);
+    const recipients = owners.filter((o) =>
+      maySendNotification(normalizeNotificationPrefs(o.notificationPrefs), "monthly_chart"),
+    );
+    if (recipients.length === 0) {
+      results.push({ businessId: business.id, name: business.name, sent: 0, skipped: "no owners opted in" });
       continue;
     }
 
@@ -99,8 +104,16 @@ export async function sendMonthlyChartsForAllBusinesses(appBaseUrl: string) {
       if (!media) continue;
       const url = media.startsWith("http") ? media : `${appBaseUrl.replace(/\/$/, "")}${media}`;
       const caption = `${business.name} — monthly price comparison\n${product.name}: this month vs previous months`;
-      for (const to of ownerPhones) {
-        await sendWhatsApp(to, caption, url);
+      for (const owner of recipients) {
+        const to = normalizePhone(owner.phone);
+        if (!to) continue;
+        await recordAndSendWhatsApp({
+          businessId: business.id,
+          toPhone: to,
+          kind: "monthly_chart",
+          body: caption,
+          mediaUrl: url,
+        });
       }
       sent += 1;
     }

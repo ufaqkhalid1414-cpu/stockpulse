@@ -20,6 +20,20 @@ export function activityActionLabel(lang: Lang, item: ActivityHistoryItem) {
       return t(lang, "activityActionProductAdded");
     case "stock_deducted":
       return t(lang, "activityActionStockDeducted");
+    case "stock_added":
+      return t(lang, "activityActionStockAdded");
+    case "stock_moved":
+      return t(lang, "activityActionStockMoved");
+    case "stock_corrected":
+      return t(lang, "activityActionStockCorrected");
+    case "stock_blocked":
+      return t(lang, "activityActionStockBlocked");
+    case "product_edited":
+      return t(lang, "activityActionProductEdited");
+    case "product_archived":
+      return t(lang, "activityActionProductArchived");
+    case "product_restored":
+      return t(lang, "activityActionProductRestored");
     case "purchase_price_changed":
       return t(lang, "activityActionPriceChanged");
     case "staff_added":
@@ -30,6 +44,12 @@ export function activityActionLabel(lang: Lang, item: ActivityHistoryItem) {
       return t(lang, "activityActionOwnerRemoved");
     case "settings_changed":
       return t(lang, "activityActionSettingsChanged");
+    case "staff_removed":
+      return t(lang, "activityActionStaffRemoved");
+    case "staff_permission_changed":
+      return t(lang, "activityActionStaffPermissionChanged");
+    case "access_blocked":
+      return t(lang, "activityActionAccessBlocked");
     default:
       return item.summary;
   }
@@ -48,12 +68,35 @@ export function activityWhatLine(lang: Lang, item: ActivityHistoryItem) {
         qty: formatQty(Math.abs(item.quantityChange ?? 0)),
         name,
       });
+    case "stock_added":
+      return t(lang, "activityWhatStockAdded", {
+        qty: formatQty(Math.abs(item.quantityChange ?? 0)),
+        name,
+      });
+    case "stock_moved":
+      return t(lang, "activityWhatStockMoved", {
+        qty: formatQty(Math.abs(item.quantityChange ?? 0)),
+        name,
+      });
+    case "stock_corrected":
+      return t(lang, "activityWhatStockCorrected", { name });
+    case "stock_blocked":
+      return item.summary;
+    case "product_edited":
+      return t(lang, "activityWhatProductEdited", { name });
+    case "product_archived":
+      return t(lang, "activityWhatProductArchived", { name });
+    case "product_restored":
+      return t(lang, "activityWhatProductRestored", { name });
     case "purchase_price_changed":
       return t(lang, "activityWhatPriceChanged", { name });
     case "staff_added":
+    case "staff_removed":
+    case "staff_permission_changed":
     case "owner_added":
     case "owner_removed":
     case "settings_changed":
+    case "access_blocked":
       return item.summary;
     default:
       return item.summary;

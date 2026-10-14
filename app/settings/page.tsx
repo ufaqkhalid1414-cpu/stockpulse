@@ -1,17 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { LanguageMenu } from "@/components/LanguageMenu";
-import { Menu } from "@/components/Menu";
-import { Button, CheckIcon, CrossIcon, Field, Lead } from "@/components/ui";
+import { AppLink, Button, CheckIcon, CrossIcon, Field, Lead } from "@/components/ui";
 import { VoiceInput } from "@/components/VoiceInput";
-import { formatActivityCard } from "@/lib/activity-display";
 import { formatDateTime, formatWhen } from "@/lib/format";
-import { t } from "@/lib/i18n";
+import { t, type Lang } from "@/lib/i18n";
 import { markScrollTop } from "@/lib/scroll";
 import { useStock } from "@/lib/store";
-import type { ActivityCategory } from "@/lib/types";
+import type { StockPlace } from "@/lib/types";
 import { useRouter } from "next/navigation";
 
 type StatusRow = {
@@ -20,12 +18,41 @@ type StatusRow = {
   detail: string | null;
   hint: string | null;
   at?: string | null;
+  provider?: string;
 };
 
 type SystemStatus = {
   database: StatusRow;
   whatsapp: StatusRow;
   lastBackup: StatusRow & { at: string | null };
+  delivery?: {
+    sent: number;
+    failed: number;
+    windowClosed: number;
+    lastFailReason: string | null;
+    summary: string;
+    notDelivering: boolean;
+  };
+};
+
+type NotifPrefs = {
+  dailyReport: boolean;
+  dailyReportTime: string;
+  priceAlerts: boolean;
+  lowStockAlerts: boolean;
+  recountAlerts: boolean;
+  monthlyChart: boolean;
+  pauseAll: boolean;
+};
+
+const DEFAULT_PREFS: NotifPrefs = {
+  dailyReport: true,
+  dailyReportTime: "20:00",
+  priceAlerts: true,
+  lowStockAlerts: true,
+  recountAlerts: true,
+  monthlyChart: true,
+  pauseAll: false,
 };
 
 export default function SettingsPage() {
@@ -35,6 +62,12 @@ export default function SettingsPage() {
     runBackup,
     sendDailyReport,
     sendMonthlyChart,
+    updateNotificationPrefs,
+    requestChangeMyNumber,
+    confirmChangeMyNumber,
+    addPlace,
+    renamePlace,
+    removePlace,
     connectShopify,
     syncShopify,
     disconnectShopify,
@@ -58,26 +91,47 @@ export default function SettingsPage() {
   const [shopDomain, setShopDomain] = useState("");
   const [shopToken, setShopToken] = useState("");
   const [showBackupHistory, setShowBackupHistory] = useState(false);
-  const [showActivityHistory, setShowActivityHistory] = useState(true);
-  const [activityFilter, setActivityFilter] = useState<"all" | ActivityCategory>("all");
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
+  const [systemStatusLoading, setSystemStatusLoading] = useState(true);
+  const [confirmLogoutEverywhere, setConfirmLogoutEverywhere] = useState(false);
+  const [newPhone, setNewPhone] = useState("");
+  const [phoneCode, setPhoneCode] = useState("");
+  const [phoneDevCode, setPhoneDevCode] = useState("");
+  const [phoneCodeSent, setPhoneCodeSent] = useState(false);
+  const [newNames, setNewNames] = useState({ warehouse: "", shop: "", online: "" });
+  const [editingPlaceId, setEditingPlaceId] = useState<string | null>(null);
+  const [editingPlaceName, setEditingPlaceName] = useState("");
   const shopify = state.shopify;
+  const allPlaces = state.places || [];
+  const warehouses = allPlaces.filter((p) => p.kind === "warehouse");
+  const shops = allPlaces.filter((p) => p.kind === "shop");
+  const onlineStores = allPlaces.filter((p) => p.kind === "online");
 
-  const activityRows = useMemo(() => {
-    const rows = state.activityHistory ?? [];
-    if (activityFilter === "all") return rows;
-    return rows.filter((row) => row.category === activityFilter);
-  }, [state.activityHistory, activityFilter]);
+  const myOwner = state.owners.find((o) => {
+    const a = (o.phone || "").replace(/\s/g, "");
+    const b = (phone || "").replace(/\s/g, "");
+    return a && b && a === b;
+  });
+  const prefs: NotifPrefs = {
+    ...DEFAULT_PREFS,
+    ...(myOwner?.notificationPrefs || {}),
+  };
 
   const loadSystemStatus = useCallback(async () => {
-    if (!isOwner) return;
+    if (!isOwner) {
+      setSystemStatusLoading(false);
+      return;
+    }
+    setSystemStatusLoading(true);
     try {
-      const res = await fetch("/api/system-status");
+      const res = await fetch("/api/system-status", { cache: "no-store" });
       if (!res.ok) return;
       const data = (await res.json()) as SystemStatus;
       setSystemStatus(data);
     } catch {
       /* keep prior */
+    } finally {
+      setSystemStatusLoading(false);
     }
   }, [isOwner]);
 
@@ -113,7 +167,9 @@ export default function SettingsPage() {
                 title={t(lang, "statusDatabase")}
                 value={
                   systemStatus.database.ok
-                    ? t(lang, "statusConnected")
+                    ? systemStatus.database.provider === "firebase"
+                      ? t(lang, "statusFirebaseConnected")
+                      : t(lang, "statusConnected")
                     : t(lang, "statusNotConnected")
                 }
                 hint={systemStatus.database.ok ? null : t(lang, "statusDatabaseBad")}
@@ -126,8 +182,26 @@ export default function SettingsPage() {
                     ? t(lang, "statusConnected")
                     : t(lang, "statusNotConnected")
                 }
-                hint={systemStatus.whatsapp.ok ? null : t(lang, "statusWhatsAppBad")}
+                hint={
+                  systemStatus.delivery?.notDelivering
+                    ? t(lang, "statusWhatsAppNotDelivering")
+                    : systemStatus.whatsapp.ok
+                      ? null
+                      : t(lang, "statusWhatsAppBad")
+                }
               />
+              {systemStatus.delivery ? (
+                <StatusLine
+                  ok={!systemStatus.delivery.notDelivering && systemStatus.delivery.failed === 0}
+                  title={t(lang, "statusDelivery")}
+                  value={systemStatus.delivery.summary}
+                  hint={
+                    systemStatus.delivery.windowClosed > 0
+                      ? "Window closed"
+                      : systemStatus.delivery.lastFailReason
+                  }
+                />
+              ) : null}
               <StatusLine
                 ok={systemStatus.lastBackup.ok}
                 title={t(lang, "statusLastBackup")}
@@ -140,72 +214,21 @@ export default function SettingsPage() {
               />
             </ul>
           ) : (
-            <p className="text-sm text-navy/55">…</p>
+            <p className="text-sm text-navy/55" aria-live="polite">
+              {systemStatusLoading ? t(lang, "systemStatusChecking") : t(lang, "systemStatusUnavailable")}
+            </p>
           )}
         </div>
       ) : null}
 
-      <div className="card mt-4 space-y-4 p-5 sm:p-6">
+      <div className="card mt-4 space-y-3 p-5 sm:p-6">
         <div>
           <p className="font-semibold text-navy">{t(lang, "activityHistory")}</p>
           <p className="mt-1 text-sm text-navy/70">{t(lang, "activityHistorySupport")}</p>
         </div>
-        <button
-          type="button"
-          className="flex w-full items-center justify-between rounded-xl border-2 border-navy/20 bg-cream px-4 py-4 text-left transition hover:border-navy/35"
-          onClick={() => setShowActivityHistory((open) => !open)}
-          aria-expanded={showActivityHistory}
-        >
-          <span className="text-base font-bold text-navy sm:text-lg">
-            {showActivityHistory ? t(lang, "activityHistoryHide") : t(lang, "activityHistoryOpen")}
-          </span>
-        </button>
-
-        {showActivityHistory ? (
-          <div className="space-y-3">
-            <Menu
-              label={t(lang, "activityHistory")}
-              value={activityFilter}
-              align="start"
-              options={[
-                { value: "all", label: t(lang, "activityFilterAll") },
-                { value: "stock", label: t(lang, "activityFilterStock") },
-                { value: "prices", label: t(lang, "activityFilterPrices") },
-                { value: "products", label: t(lang, "activityFilterProducts") },
-                { value: "staff", label: t(lang, "activityFilterStaff") },
-                { value: "settings", label: t(lang, "activityFilterSettings") },
-              ]}
-              onChange={(value) => setActivityFilter(value as "all" | ActivityCategory)}
-            />
-            {activityRows.length === 0 ? (
-              <p className="text-sm text-navy/70">{t(lang, "activityHistoryEmpty")}</p>
-            ) : (
-              <ul className="divide-y divide-navy/10 rounded-xl border border-navy/10 bg-white">
-                {activityRows.map((entry) => {
-                  const card = formatActivityCard(lang, entry);
-                  return (
-                    <li key={entry.id} className="space-y-1.5 px-4 py-3.5 text-sm">
-                      <div className="flex flex-wrap items-baseline justify-between gap-2">
-                        <p className="font-semibold text-navy">{card.who}</p>
-                        <p className="text-xs font-medium text-navy/50">{card.action}</p>
-                      </div>
-                      <p className="text-navy">{card.what}</p>
-                      {card.where ? <p className="text-navy/70">{card.where}</p> : null}
-                      {card.change ? (
-                        <p className="font-medium text-navy/80" dir="ltr">
-                          {card.change}
-                        </p>
-                      ) : null}
-                      <p className="text-xs text-navy/55" dir="ltr">
-                        {card.when}
-                      </p>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        ) : null}
+        <AppLink href="/activity" className="lift inline-flex items-center text-base font-bold text-navy">
+          {t(lang, "goToActivity")}
+        </AppLink>
       </div>
 
       <div className="card mt-4 space-y-4 p-5 sm:p-6">
@@ -322,7 +345,25 @@ export default function SettingsPage() {
           >
             {t(lang, "logOut")}
           </Button>
+          {isOwner ? (
+            <Button
+              variant="secondary"
+              disabled={busy}
+              onClick={async () => {
+                if (!confirmLogoutEverywhere) {
+                  setConfirmLogoutEverywhere(true);
+                  return;
+                }
+                await logout(true);
+                markScrollTop();
+                router.push("/", { scroll: false });
+              }}
+            >
+              {confirmLogoutEverywhere ? t(lang, "logOutEverywhereConfirm") : t(lang, "logOutEverywhere")}
+            </Button>
+          ) : null}
         </div>
+        {isOwner ? <p className="text-xs text-navy/55">{t(lang, "logOutEverywhereSupport")}</p> : null}
       </div>
 
       {isOwner ? (
@@ -426,44 +467,325 @@ export default function SettingsPage() {
         </div>
       ) : null}
 
-      <div className="card mt-4 space-y-3 p-5 sm:p-6">
-        <Button
-          disabled={busy}
-          onClick={async () => {
-            try {
-              const result = await sendDailyReport();
-              setReportPreview(result.preview);
-              setNotice(t(lang, "reportSent"));
-            } catch {
-              /* error shown below */
-            }
-          }}
-        >
-          {t(lang, "sendDailyReport")}
-        </Button>
-        <Button
-          variant="secondary"
-          disabled={busy}
-          onClick={async () => {
-            try {
-              await sendMonthlyChart();
-              setNotice(t(lang, "chartSent"));
-            } catch {
-              /* error shown below */
-            }
-          }}
-        >
-          {t(lang, "sendMonthlyChart")}
-        </Button>
-        {notice ? <p className="text-sm font-medium text-pine">{notice}</p> : null}
-        {reportPreview ? (
+      {isOwner ? (
+        <div className="card mt-4 space-y-8 p-5 sm:p-6">
           <div>
-            <p className="text-sm font-medium text-navy/70">{t(lang, "reportPreview")}</p>
-            <pre className="mt-2 whitespace-pre-wrap rounded-xl bg-cream p-3 text-sm text-navy">{reportPreview}</pre>
+            <p className="text-lg font-bold text-navy">{t(lang, "placesIntroTitle")}</p>
+            <p className="mt-1 text-sm text-navy/60">{t(lang, "placesIntroSupport")}</p>
           </div>
-        ) : null}
-        {error ? <p className="text-sm font-medium text-clay">{error}</p> : null}
-      </div>
+          <PlaceKindEditor
+            lang={lang}
+            title={t(lang, "warehousesTitle")}
+            support={t(lang, "warehousesSupport")}
+            nameLabel={t(lang, "warehouseNameLabel")}
+            addLabel={t(lang, "warehouseAdd")}
+            placeholder="e.g. Lahore warehouse"
+            places={warehouses}
+            newName={newNames.warehouse}
+            setNewName={(v) => setNewNames((n) => ({ ...n, warehouse: v }))}
+            editingPlaceId={editingPlaceId}
+            editingPlaceName={editingPlaceName}
+            setEditingPlaceId={setEditingPlaceId}
+            setEditingPlaceName={setEditingPlaceName}
+            busy={busy}
+            onAdd={async () => {
+              await addPlace("warehouse", newNames.warehouse.trim());
+              setNewNames((n) => ({ ...n, warehouse: "" }));
+              setNotice(t(lang, "warehouseSaved"));
+            }}
+            onRename={async (id, name) => {
+              await renamePlace(id, name);
+              setEditingPlaceId(null);
+              setNotice(t(lang, "warehouseSaved"));
+            }}
+            onRemove={async (id) => {
+              if (!window.confirm(t(lang, "warehouseRemoveConfirm"))) return;
+              await removePlace(id);
+              setNotice(t(lang, "warehouseSaved"));
+            }}
+          />
+          <PlaceKindEditor
+            lang={lang}
+            title={t(lang, "shopsTitle")}
+            support={t(lang, "shopsSupport")}
+            nameLabel={t(lang, "shopNameLabel")}
+            addLabel={t(lang, "shopAdd")}
+            placeholder="e.g. Main street shop"
+            places={shops}
+            newName={newNames.shop}
+            setNewName={(v) => setNewNames((n) => ({ ...n, shop: v }))}
+            editingPlaceId={editingPlaceId}
+            editingPlaceName={editingPlaceName}
+            setEditingPlaceId={setEditingPlaceId}
+            setEditingPlaceName={setEditingPlaceName}
+            busy={busy}
+            onAdd={async () => {
+              await addPlace("shop", newNames.shop.trim());
+              setNewNames((n) => ({ ...n, shop: "" }));
+              setNotice(t(lang, "warehouseSaved"));
+            }}
+            onRename={async (id, name) => {
+              await renamePlace(id, name);
+              setEditingPlaceId(null);
+              setNotice(t(lang, "warehouseSaved"));
+            }}
+            onRemove={async (id) => {
+              if (!window.confirm(t(lang, "warehouseRemoveConfirm"))) return;
+              await removePlace(id);
+              setNotice(t(lang, "warehouseSaved"));
+            }}
+          />
+          <PlaceKindEditor
+            lang={lang}
+            title={t(lang, "onlineStoresTitle")}
+            support={t(lang, "onlineStoresSupport")}
+            nameLabel={t(lang, "onlineStoreNameLabel")}
+            addLabel={t(lang, "onlineStoreAdd")}
+            placeholder="e.g. Shopify store"
+            places={onlineStores}
+            newName={newNames.online}
+            setNewName={(v) => setNewNames((n) => ({ ...n, online: v }))}
+            editingPlaceId={editingPlaceId}
+            editingPlaceName={editingPlaceName}
+            setEditingPlaceId={setEditingPlaceId}
+            setEditingPlaceName={setEditingPlaceName}
+            busy={busy}
+            onAdd={async () => {
+              await addPlace("online", newNames.online.trim());
+              setNewNames((n) => ({ ...n, online: "" }));
+              setNotice(t(lang, "warehouseSaved"));
+            }}
+            onRename={async (id, name) => {
+              await renamePlace(id, name);
+              setEditingPlaceId(null);
+              setNotice(t(lang, "warehouseSaved"));
+            }}
+            onRemove={async (id) => {
+              if (!window.confirm(t(lang, "warehouseRemoveConfirm"))) return;
+              await removePlace(id);
+              setNotice(t(lang, "warehouseSaved"));
+            }}
+          />
+        </div>
+      ) : null}
+
+      {isOwner ? (
+        <div className="card mt-4 space-y-4 p-5 sm:p-6">
+          <div>
+            <p className="text-lg font-bold text-navy">{t(lang, "notificationsTitle")}</p>
+            <p className="mt-1 text-sm text-navy/60">{t(lang, "notificationsSupport")}</p>
+          </div>
+
+          <NotifSwitch
+            label={t(lang, "notifPauseAll")}
+            checked={prefs.pauseAll}
+            disabled={busy}
+            onChange={async (pauseAll) => {
+              try {
+                await updateNotificationPrefs({ pauseAll });
+                setNotice(t(lang, "notificationsSaved"));
+              } catch {
+                /* store error */
+              }
+            }}
+          />
+          <p className="text-xs text-navy/55">{t(lang, "notifPauseAllHint")}</p>
+
+          <NotifSwitch
+            label={t(lang, "notifDailyReport")}
+            checked={prefs.dailyReport}
+            disabled={busy || prefs.pauseAll}
+            onChange={async (dailyReport) => {
+              try {
+                await updateNotificationPrefs({ dailyReport });
+                setNotice(t(lang, "notificationsSaved"));
+              } catch {
+                /* store error */
+              }
+            }}
+          />
+          {prefs.dailyReport && !prefs.pauseAll ? (
+            <Field id="daily-report-time" label={t(lang, "notifDailyReportTime")}>
+              <input
+                id="daily-report-time"
+                type="time"
+                className="field"
+                value={prefs.dailyReportTime || "20:00"}
+                disabled={busy}
+                onChange={async (e) => {
+                  try {
+                    await updateNotificationPrefs({ dailyReportTime: e.target.value || "20:00" });
+                    setNotice(t(lang, "notificationsSaved"));
+                  } catch {
+                    /* store error */
+                  }
+                }}
+              />
+            </Field>
+          ) : null}
+
+          <NotifSwitch
+            label={t(lang, "notifPriceAlerts")}
+            checked={prefs.priceAlerts}
+            disabled={busy || prefs.pauseAll}
+            onChange={async (priceAlerts) => {
+              try {
+                await updateNotificationPrefs({ priceAlerts });
+                setNotice(t(lang, "notificationsSaved"));
+              } catch {
+                /* store error */
+              }
+            }}
+          />
+          <NotifSwitch
+            label={t(lang, "notifLowStockAlerts")}
+            checked={prefs.lowStockAlerts}
+            disabled={busy || prefs.pauseAll}
+            onChange={async (lowStockAlerts) => {
+              try {
+                await updateNotificationPrefs({ lowStockAlerts });
+                setNotice(t(lang, "notificationsSaved"));
+              } catch {
+                /* store error */
+              }
+            }}
+          />
+          <NotifSwitch
+            label={t(lang, "notifRecountAlerts")}
+            checked={prefs.recountAlerts}
+            disabled={busy || prefs.pauseAll}
+            onChange={async (recountAlerts) => {
+              try {
+                await updateNotificationPrefs({ recountAlerts });
+                setNotice(t(lang, "notificationsSaved"));
+              } catch {
+                /* store error */
+              }
+            }}
+          />
+          <NotifSwitch
+            label={t(lang, "notifMonthlyChart")}
+            checked={prefs.monthlyChart}
+            disabled={busy || prefs.pauseAll}
+            onChange={async (monthlyChart) => {
+              try {
+                await updateNotificationPrefs({ monthlyChart });
+                setNotice(t(lang, "notificationsSaved"));
+              } catch {
+                /* store error */
+              }
+            }}
+          />
+
+          <Button
+            disabled={busy}
+            onClick={async () => {
+              try {
+                const result = await sendDailyReport();
+                setReportPreview(result.preview);
+                setNotice(t(lang, "reportSent"));
+                void loadSystemStatus();
+              } catch {
+                /* error shown below */
+              }
+            }}
+          >
+            {t(lang, "sendDailyReportTest")}
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={busy}
+            onClick={async () => {
+              try {
+                await sendMonthlyChart();
+                setNotice(t(lang, "chartSent"));
+              } catch {
+                /* error shown below */
+              }
+            }}
+          >
+            {t(lang, "sendMonthlyChart")}
+          </Button>
+
+          <div className="border-t border-navy/10 pt-4">
+            <p className="font-semibold text-navy">{t(lang, "changeMyNumber")}</p>
+            <p className="mt-1 text-sm text-navy/60">{t(lang, "changeMyNumberHint")}</p>
+            <Field id="new-wa" label={t(lang, "changeMyNumberNew")}>
+              <input
+                id="new-wa"
+                className="field"
+                dir="ltr"
+                value={newPhone}
+                onChange={(e) => setNewPhone(e.target.value)}
+                placeholder="+92 300 1234567"
+              />
+            </Field>
+            <div className="mt-3 flex flex-wrap gap-3">
+              <Button
+                variant="secondary"
+                disabled={busy || !newPhone.trim()}
+                onClick={async () => {
+                  try {
+                    const result = await requestChangeMyNumber(newPhone.trim());
+                    setPhoneCodeSent(true);
+                    setPhoneDevCode(result.devCode || "");
+                    setNotice(t(lang, "sendCode"));
+                  } catch {
+                    /* store error */
+                  }
+                }}
+              >
+                {t(lang, "changeMyNumberSendCode")}
+              </Button>
+            </div>
+            {phoneCodeSent ? (
+              <>
+                <Field id="wa-code" label={t(lang, "changeMyNumberCode")}>
+                  <input
+                    id="wa-code"
+                    className="field"
+                    dir="ltr"
+                    inputMode="numeric"
+                    value={phoneCode}
+                    onChange={(e) => setPhoneCode(e.target.value)}
+                    placeholder="123456"
+                  />
+                </Field>
+                {phoneDevCode ? (
+                  <p className="text-sm text-navy/60" dir="ltr">
+                    Dev code: {phoneDevCode}
+                  </p>
+                ) : null}
+                <Button
+                  disabled={busy || phoneCode.length !== 6}
+                  onClick={async () => {
+                    try {
+                      await confirmChangeMyNumber(newPhone.trim(), phoneCode);
+                      setNotice(t(lang, "changeMyNumberDone"));
+                      await logout();
+                      markScrollTop();
+                      router.push("/login", { scroll: false });
+                    } catch {
+                      /* store error */
+                    }
+                  }}
+                >
+                  {t(lang, "changeMyNumberConfirm")}
+                </Button>
+              </>
+            ) : null}
+          </div>
+
+          {notice ? <p className="text-sm font-medium text-pine">{notice}</p> : null}
+          {reportPreview ? (
+            <div>
+              <p className="text-sm font-medium text-navy/70">{t(lang, "reportPreview")}</p>
+              <pre className="mt-2 whitespace-pre-wrap rounded-xl bg-cream p-3 text-sm text-navy">{reportPreview}</pre>
+            </div>
+          ) : null}
+          {error ? <p className="text-sm font-medium text-clay">{error}</p> : null}
+        </div>
+      ) : null}
 
       {canReset ? (
         <div className="mt-8">
@@ -487,6 +809,157 @@ export default function SettingsPage() {
         <p className="mt-8 text-sm text-navy/55">{t(lang, "coOwnerBlocked")}</p>
       ) : null}
     </AppShell>
+  );
+}
+
+function PlaceKindEditor({
+  lang,
+  title,
+  support,
+  nameLabel,
+  addLabel,
+  placeholder,
+  places,
+  newName,
+  setNewName,
+  editingPlaceId,
+  editingPlaceName,
+  setEditingPlaceId,
+  setEditingPlaceName,
+  busy,
+  onAdd,
+  onRename,
+  onRemove,
+}: {
+  lang: Lang;
+  title: string;
+  support: string;
+  nameLabel: string;
+  addLabel: string;
+  placeholder: string;
+  places: StockPlace[];
+  newName: string;
+  setNewName: (v: string) => void;
+  editingPlaceId: string | null;
+  editingPlaceName: string;
+  setEditingPlaceId: (id: string | null) => void;
+  setEditingPlaceName: (name: string) => void;
+  busy: boolean;
+  onAdd: () => Promise<void>;
+  onRename: (id: string, name: string) => Promise<void>;
+  onRemove: (id: string) => Promise<void>;
+}) {
+  const fieldId = `new-place-${title.replace(/\s+/g, "-").toLowerCase()}`;
+  return (
+    <div className="space-y-4 border-t border-navy/10 pt-6 first:border-t-0 first:pt-0">
+      <div>
+        <p className="font-semibold text-navy">{title}</p>
+        <p className="mt-1 text-sm text-navy/60">{support}</p>
+      </div>
+      <ul className="space-y-3">
+        {places.map((place) => (
+          <li key={place.id} className="flex flex-wrap items-center gap-2">
+            {editingPlaceId === place.id ? (
+              <>
+                <input
+                  className="field min-w-[10rem] flex-1"
+                  value={editingPlaceName}
+                  onChange={(e) => setEditingPlaceName(e.target.value)}
+                  aria-label={nameLabel}
+                />
+                <Button
+                  disabled={busy || !editingPlaceName.trim()}
+                  onClick={async () => {
+                    try {
+                      await onRename(place.id, editingPlaceName.trim());
+                    } catch {
+                      /* store error */
+                    }
+                  }}
+                >
+                  {t(lang, "save")}
+                </Button>
+              </>
+            ) : (
+              <>
+                <span className="flex-1 text-sm font-medium text-navy">{place.name}</span>
+                <Button
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => {
+                    setEditingPlaceId(place.id);
+                    setEditingPlaceName(place.name);
+                  }}
+                >
+                  {t(lang, "warehouseRename")}
+                </Button>
+                {places.length > 1 ? (
+                  <Button
+                    variant="secondary"
+                    disabled={busy}
+                    onClick={async () => {
+                      try {
+                        await onRemove(place.id);
+                      } catch {
+                        /* store error */
+                      }
+                    }}
+                  >
+                    {t(lang, "warehouseRemove")}
+                  </Button>
+                ) : null}
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+      <Field id={fieldId} label={nameLabel}>
+        <input
+          id={fieldId}
+          className="field"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder={placeholder}
+        />
+      </Field>
+      <Button
+        disabled={busy || !newName.trim()}
+        onClick={async () => {
+          try {
+            await onAdd();
+          } catch {
+            /* store error */
+          }
+        }}
+      >
+        {addLabel}
+      </Button>
+    </div>
+  );
+}
+
+function NotifSwitch({
+  label,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (next: boolean) => void | Promise<void>;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-3 py-1">
+      <span className="text-sm font-medium text-navy">{label}</span>
+      <input
+        type="checkbox"
+        className="h-5 w-5 accent-navy"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => void onChange(e.target.checked)}
+      />
+    </label>
   );
 }
 

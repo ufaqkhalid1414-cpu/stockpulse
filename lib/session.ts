@@ -1,14 +1,25 @@
 import { createHash, randomBytes, randomInt } from "crypto";
 import { cookies } from "next/headers";
 import { ensureDbReady, firestoreDb, newId, nowIso } from "@/lib/db";
-import { ensureOwnersTable, findMembershipByPhone, getBusiness, type BusinessRow } from "@/lib/db/queries";
+import {
+  ensureOwnersTable,
+  findMembershipByEmail,
+  findMembershipByPhone,
+  findMembershipForSession,
+  getBusiness,
+  type BusinessRow,
+} from "@/lib/db/queries";
 import { normalizePhone } from "@/lib/phone";
+import type { AccessRole } from "@/lib/types";
 
 export const SESSION_COOKIE = "stockpulse_session";
 /** @deprecated Prefer SESSION_COOKIE — kept only to clear legacy cookies */
 export const BUSINESS_COOKIE = "stockpulse_business_id";
 
 const SESSION_DAYS = 30;
+const SESSION_MAX_AGE_MS = SESSION_DAYS * 24 * 60 * 60 * 1000;
+/** Throttle lastSeenAt/expiresAt writes so we don't hammer Firestore on every request. */
+const SESSION_TOUCH_INTERVAL_MS = 5 * 60 * 1000;
 const OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_COOLDOWN_MS = 45 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
@@ -18,8 +29,15 @@ const OTP_RATE_WINDOW_MS = 10 * 60 * 1000;
 export type AuthSession = {
   id: string;
   phone: string;
+  email: string | null;
   businessId: string | null;
   expiresAt: string;
+};
+
+type SessionMeta = {
+  name?: string | null;
+  role?: AccessRole | null;
+  email?: string | null;
 };
 
 function hashSecret(value: string) {
@@ -131,20 +149,48 @@ export function sessionCookieOptions() {
   };
 }
 
-export async function createSession(phone: string, businessId: string | null) {
+/** Pure helper (no I/O) — exported for unit tests of the sliding-expiry rule. */
+export function isSessionExpired(input: { lastSeenAt: string | null | undefined; expiresAt: string | null | undefined }, now = Date.now()) {
+  const lastSeenAtMs = input.lastSeenAt ? new Date(input.lastSeenAt).getTime() : NaN;
+  const expiresAtMs = input.expiresAt ? new Date(input.expiresAt).getTime() : NaN;
+  const slidingExpired = !Number.isFinite(lastSeenAtMs) || now - lastSeenAtMs > SESSION_MAX_AGE_MS;
+  const hardExpired = Number.isFinite(expiresAtMs) && now > expiresAtMs;
+  return slidingExpired || hardExpired;
+}
+
+/** Pure helper — true when lastSeenAt should be refreshed (throttled write). */
+export function shouldTouchSession(lastSeenAt: string | null | undefined, now = Date.now()) {
+  const lastSeenAtMs = lastSeenAt ? new Date(lastSeenAt).getTime() : NaN;
+  return !Number.isFinite(lastSeenAtMs) || now - lastSeenAtMs > SESSION_TOUCH_INTERVAL_MS;
+}
+
+export async function createSession(
+  phone: string | null | undefined,
+  businessId: string | null,
+  meta?: SessionMeta,
+) {
   await ensureAuthTables();
-  const normalized = normalizePhone(phone);
+  const normalized = phone ? normalizePhone(phone) : "";
+  const email = meta?.email ? String(meta.email).trim().toLowerCase() : null;
+  if (!normalized && !email) {
+    throw new Error("A phone or email is required to create a session");
+  }
   const token = randomBytes(32).toString("hex");
   const tokenHash = hashSecret(token);
   const created = nowIso();
-  const expires = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const expires = new Date(Date.now() + SESSION_MAX_AGE_MS).toISOString();
 
   // One document keyed by token hash — cookie lookup is a single read (no dual-write race).
   await firestoreDb().collection("sessions").doc(tokenHash).set({
     phone: normalized,
+    email,
     businessId,
-    expiresAt: expires,
     createdAt: created,
+    lastSeenAt: created,
+    expiresAt: expires,
+    revoked: false,
+    personName: meta?.name ?? null,
+    role: meta?.role ?? null,
   });
 
   const opts = sessionCookieOptions();
@@ -168,6 +214,30 @@ export async function destroySession() {
   jar.delete(BUSINESS_COOKIE);
 }
 
+/** Revoke every session belonging to a phone number (all devices). Returns count revoked. */
+export async function revokeSessionsForPhone(phone: string): Promise<number> {
+  await ensureAuthTables();
+  const normalized = normalizePhone(phone);
+  const snap = await firestoreDb().collection("sessions").where("phone", "==", normalized).get();
+  if (snap.empty) return 0;
+  const batch = firestoreDb().batch();
+  snap.docs.forEach((d) => batch.set(d.ref, { revoked: true }, { merge: true }));
+  await batch.commit();
+  return snap.docs.length;
+}
+
+/** @deprecated alias of revokeSessionsForPhone — kept for naming clarity at call sites */
+export const revokeAllSessionsForPhone = revokeSessionsForPhone;
+
+/**
+ * "Log out everywhere" — revoke every session for the current user's phone
+ * (every device, including the one making the request). Used by the
+ * owner-only Settings button.
+ */
+export async function logoutEverywhere(phone: string): Promise<number> {
+  return revokeSessionsForPhone(phone);
+}
+
 export async function getSession(): Promise<AuthSession | null> {
   await ensureAuthTables();
   const jar = await cookies();
@@ -189,11 +259,17 @@ export async function getSession(): Promise<AuthSession | null> {
         // Migrate legacy session to single-doc format
         if (snap.exists) {
           const row = snap.data()!;
+          const migratedNow = nowIso();
           await firestoreDb().collection("sessions").doc(tokenHash).set({
             phone: row.phone,
+            email: row.email ?? null,
             businessId: row.businessId ?? null,
-            expiresAt: row.expiresAt,
-            createdAt: row.createdAt ?? nowIso(),
+            createdAt: row.createdAt ?? migratedNow,
+            lastSeenAt: migratedNow,
+            expiresAt: row.expiresAt ?? new Date(Date.now() + SESSION_MAX_AGE_MS).toISOString(),
+            revoked: Boolean(row.revoked ?? false),
+            personName: row.personName ?? null,
+            role: row.role ?? null,
           });
           await snap.ref.delete().catch(() => undefined);
           await lookup.ref.delete().catch(() => undefined);
@@ -206,16 +282,37 @@ export async function getSession(): Promise<AuthSession | null> {
 
   if (!snap.exists) return null;
   const row = snap.data()!;
-  if (new Date(String(row.expiresAt)).getTime() < Date.now()) {
-    await snap.ref.delete().catch(() => undefined);
+
+  if (row.revoked === true) {
     jar.delete(SESSION_COOKIE);
+    jar.delete(BUSINESS_COOKIE);
     return null;
   }
+
+  const now = Date.now();
+  const lastSeenAt = row.lastSeenAt ? String(row.lastSeenAt) : String(row.createdAt ?? "");
+  const expiresAt = row.expiresAt ? String(row.expiresAt) : "";
+
+  if (isSessionExpired({ lastSeenAt, expiresAt }, now)) {
+    await snap.ref.delete().catch(() => undefined);
+    jar.delete(SESSION_COOKIE);
+    jar.delete(BUSINESS_COOKIE);
+    return null;
+  }
+
+  // Sliding expiry: throttle writes so a busy user isn't hammering Firestore.
+  if (shouldTouchSession(lastSeenAt, now)) {
+    const touchedAt = nowIso();
+    const nextExpires = new Date(now + SESSION_MAX_AGE_MS).toISOString();
+    await snap.ref.set({ lastSeenAt: touchedAt, expiresAt: nextExpires }, { merge: true }).catch(() => undefined);
+  }
+
   return {
     id: sessionId,
-    phone: String(row.phone),
+    phone: String(row.phone ?? ""),
+    email: row.email ? String(row.email) : null,
     businessId: row.businessId ?? null,
-    expiresAt: String(row.expiresAt),
+    expiresAt,
   };
 }
 
@@ -235,13 +332,19 @@ export async function requireBusiness(): Promise<BusinessRow | null> {
   if (!session?.businessId) return null;
   const business = await getBusiness(session.businessId);
   if (!business) return null;
-  const membership = await findMembershipByPhone(session.phone);
+  const membership = await findMembershipForSession(session);
   if (!membership || membership.businessId !== business.id) return null;
   return business;
 }
 
 export async function resolveBusinessForPhone(phone: string) {
   const membership = await findMembershipByPhone(normalizePhone(phone));
+  if (!membership) return null;
+  return await getBusiness(membership.businessId);
+}
+
+export async function resolveBusinessForEmail(email: string) {
+  const membership = await findMembershipByEmail(email);
   if (!membership) return null;
   return await getBusiness(membership.businessId);
 }

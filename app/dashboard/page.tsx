@@ -6,7 +6,15 @@ import { TrendLine } from "@/components/TrendLine";
 import { AppLink, CheckIcon, Num, StatusBanner } from "@/components/ui";
 import { formatMoney, formatPct, formatWhen } from "@/lib/format";
 import { t } from "@/lib/i18n";
-import { biggestMoves, changedProducts, lowStockProducts, priceDelta, stockValue, trendSeries } from "@/lib/metrics";
+import {
+  biggestMoves,
+  changedProducts,
+  lowStockProducts,
+  priceDelta,
+  recountProducts,
+  stockValue,
+  trendSeries,
+} from "@/lib/metrics";
 import { useStock } from "@/lib/store";
 
 export default function DashboardPage() {
@@ -16,8 +24,9 @@ export default function DashboardPage() {
   const total = stockValue(products);
   const low = lowStockProducts(products);
   const changed = changedProducts(products);
+  const recount = recountProducts(products);
   const moves = biggestMoves(products, 5);
-  const status = statusCopy(lang, products.length, changed.length, low.length);
+  const status = statusCopy(lang, products.length, changed.length, low.length, recount.length);
 
   return (
     <AppShell>
@@ -145,9 +154,21 @@ export default function DashboardPage() {
   );
 }
 
-function statusCopy(lang: Parameters<typeof t>[0], count: number, changed: number, low: number) {
+function statusCopy(
+  lang: Parameters<typeof t>[0],
+  count: number,
+  changed: number,
+  low: number,
+  recount: number,
+) {
   if (count === 0) {
     return { title: t(lang, "statusReady"), support: t(lang, "statusReadySupport") };
+  }
+  if (recount > 0) {
+    return {
+      title: recount === 1 ? t(lang, "statusRecountOne") : t(lang, "statusRecount", { count: recount }),
+      support: t(lang, "statusRecountSupport"),
+    };
   }
   if (changed > 0) {
     return {

@@ -1,29 +1,35 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Menu } from "@/components/Menu";
+import { StockActionButtons } from "@/components/StockActions";
 import { Button, Field, Lead, BackLabel } from "@/components/ui";
 import { VoiceInput } from "@/components/VoiceInput";
 import { t } from "@/lib/i18n";
 import { readPhoto } from "@/lib/photo";
+import { findExactProduct, findNameMatches, findSimilarProducts } from "@/lib/product-search";
 import { markScrollTop } from "@/lib/scroll";
 import { useStock } from "@/lib/store";
-import type { Location } from "@/lib/types";
+import type { Location, Product } from "@/lib/types";
 import { formatPricePerCarton, formatPricePerPiece, piecePriceFromCarton } from "@/lib/units";
 
 type PriceUnit = "piece" | "carton";
 
 export default function AddProductPage() {
-  const { state, addProduct, role, homePath } = useStock();
+  const { state, addProduct, role, homePath, busy } = useStock();
   const lang = state.language;
+  const places = state.places?.length ? state.places : [];
+  const defaultPlace = places[0]?.id || "warehouse";
   const router = useRouter();
-  const isStaff = role === "staff_add" || role === "staff_view";
+  const isStaff =
+    role === "staff_add" || role === "staff_view" || role === "staff_sell" || role === "staff_move";
   const fileRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
-  const [location, setLocation] = useState<Location>("warehouse");
+  const [location, setLocation] = useState<Location>(defaultPlace);
   const [quantity, setQuantity] = useState("1");
   const [priceUnit, setPriceUnit] = useState<PriceUnit>("piece");
   const [price, setPrice] = useState("");
@@ -34,13 +40,37 @@ export default function AddProductPage() {
   const [photo, setPhoto] = useState<string | undefined>();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showSuccess, setShowSuccess] = useState(false);
+  const [portalReady, setPortalReady] = useState(false);
+  const [dupExact, setDupExact] = useState<Product | null>(null);
+  const [createAnywayArmed, setCreateAnywayArmed] = useState(false);
+  const [restockProduct, setRestockProduct] = useState<Product | null>(null);
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const namePrefillDone = useRef(false);
 
   useEffect(() => {
+    setPortalReady(true);
     return () => {
       if (successTimerRef.current) clearTimeout(successTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (namePrefillDone.current || typeof window === "undefined") return;
+    const prefill = new URLSearchParams(window.location.search).get("name");
+    if (prefill) {
+      setName(prefill);
+      namePrefillDone.current = true;
+    }
+  }, []);
+
+  const nameMatches = useMemo(
+    () => findNameMatches(state.products, name, 5),
+    [state.products, name],
+  );
+  const similar = useMemo(() => {
+    if (nameMatches.length > 0) return [];
+    return findSimilarProducts(state.products, name, 3);
+  }, [state.products, name, nameMatches.length]);
 
   const preview = useMemo(() => {
     const amount = Number(price);
@@ -88,7 +118,15 @@ export default function AddProductPage() {
       else restockThreshold = Math.floor(th);
     }
     setErrors(next);
-    if (Object.keys(next).length > 0) return;
+    if (Object.keys(next).length > 0 || busy || showSuccess) return;
+
+    const exact = findExactProduct(state.products, name, variant);
+    if (exact && !createAnywayArmed) {
+      setDupExact(exact);
+      setCreateAnywayArmed(false);
+      return;
+    }
+
     void addProduct({
       name,
       category,
@@ -101,17 +139,39 @@ export default function AddProductPage() {
       piecesPerCarton: savedPpc,
     })
       .then(() => {
+        setDupExact(null);
+        setCreateAnywayArmed(false);
         setShowSuccess(true);
         if (successTimerRef.current) clearTimeout(successTimerRef.current);
-        successTimerRef.current = setTimeout(() => {
-          setShowSuccess(false);
-          markScrollTop();
-          router.push(isStaff ? "/add-product" : "/dashboard", { scroll: false });
-        }, 1600);
+        successTimerRef.current = setTimeout(() => finishAfterSuccess(), 1100);
       })
       .catch(() => {
         /* store surfaces the error; do not show success */
       });
+  }
+
+  function finishAfterSuccess() {
+    if (successTimerRef.current) {
+      clearTimeout(successTimerRef.current);
+      successTimerRef.current = null;
+    }
+    setShowSuccess(false);
+    markScrollTop();
+    if (isStaff) {
+      setName("");
+      setCategory("");
+      setVariant("");
+      setQuantity("1");
+      setPrice("");
+      setPiecesPerCarton("");
+      setThreshold("");
+      setPhoto(undefined);
+      setShowPhoto(false);
+      setPriceUnit("piece");
+      setLocation(places[0]?.id || "warehouse");
+    } else {
+      router.push("/dashboard", { scroll: false });
+    }
   }
 
   async function onPhoto(event: React.ChangeEvent<HTMLInputElement>) {
@@ -125,18 +185,105 @@ export default function AddProductPage() {
     }
   }
 
+  const successPopup =
+    portalReady && showSuccess
+      ? createPortal(
+          <button
+            type="button"
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-navy/35 px-5 backdrop-blur-[2px]"
+            role="alertdialog"
+            aria-modal="true"
+            aria-live="assertive"
+            aria-label={t(lang, "productAddedSuccess")}
+            onClick={finishAfterSuccess}
+          >
+            <div className="depth w-full max-w-sm rounded-card bg-cream px-6 py-8 text-center shadow-[var(--shadow-lift)]">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-sage text-pine">
+                <ThumbsUpIcon />
+              </div>
+              <p className="mt-4 text-xl font-bold text-navy">{t(lang, "productAddedSuccess")}</p>
+            </div>
+          </button>,
+          document.body,
+        )
+      : null;
+
+  const dupPopup =
+    portalReady && dupExact
+      ? createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-navy/35 px-5"
+            role="alertdialog"
+            aria-modal="true"
+          >
+            <div className="depth w-full max-w-md rounded-card bg-cream p-6 shadow-[var(--shadow-lift)]">
+              <p className="text-lg font-bold text-navy">
+                {t(lang, "dupExactTitle", {
+                  name: `${dupExact.name}${dupExact.variant ? ` (${dupExact.variant})` : ""}`,
+                })}
+              </p>
+              <p className="mt-2 text-sm text-navy/70">{t(lang, "dupExactSupport")}</p>
+              <div className="mt-5 flex flex-col gap-2">
+                <Button
+                  type="button"
+                  full
+                  onClick={() => {
+                    setRestockProduct(dupExact);
+                    setDupExact(null);
+                  }}
+                >
+                  {t(lang, "dupAddStock")}
+                </Button>
+                {!createAnywayArmed ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    full
+                    onClick={() => setCreateAnywayArmed(true)}
+                  >
+                    {t(lang, "dupCreateAnyway")}
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    full
+                    onClick={() => {
+                      setDupExact(null);
+                      // Re-submit with create-anyway armed
+                      window.setTimeout(() => {
+                        const form = document.getElementById("add-product-form") as HTMLFormElement | null;
+                        form?.requestSubmit();
+                      }, 0);
+                    }}
+                  >
+                    {t(lang, "dupCreateConfirm")}
+                  </Button>
+                )}
+                <button
+                  type="button"
+                  className="mt-1 text-sm font-semibold text-navy/60"
+                  onClick={() => {
+                    setDupExact(null);
+                    setCreateAnywayArmed(false);
+                  }}
+                >
+                  {t(lang, "closeSheet")}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
     <AppShell>
-      {showSuccess ? (
-        <div
-          className="pointer-events-none fixed inset-x-0 bottom-24 z-50 flex justify-center px-4 sm:bottom-10"
-          role="status"
-          aria-live="polite"
-        >
-          <div className="depth inline-flex items-center gap-2.5 rounded-full bg-sage px-4 py-3 text-sm font-semibold text-pine shadow-[var(--shadow-lift)]">
-            <ThumbsUpIcon />
-            <span>{t(lang, "productAddedSuccess")}</span>
-          </div>
+      {successPopup}
+      {dupPopup}
+      {restockProduct ? (
+        <div className="mb-4">
+          <StockActionButtons product={restockProduct} initialMode="add" />
         </div>
       ) : null}
       <div className="max-w-lg">
@@ -144,10 +291,62 @@ export default function AddProductPage() {
         <div className={isStaff ? "" : "mt-6"}>
           <Lead title={t(lang, "addTitle")} support={t(lang, "addSupport")} />
         </div>
-        <form className="card mt-6 space-y-5 p-5 sm:p-6" onSubmit={submit}>
+        <form id="add-product-form" className="card mt-6 space-y-5 p-5 sm:p-6" onSubmit={submit}>
           <Field id="name" label={t(lang, "productName")} error={errors.name}>
-            <VoiceInput id="name" lang={lang} value={name} onChange={setName} placeholder={t(lang, "productNamePlaceholder")} />
+            <VoiceInput
+              id="name"
+              lang={lang}
+              value={name}
+              onChange={(value) => {
+                setName(value);
+                setCreateAnywayArmed(false);
+              }}
+              placeholder={t(lang, "productNamePlaceholder")}
+            />
           </Field>
+          {nameMatches.length > 0 ? (
+            <div className="rounded-[12px] border border-navy/10 bg-cream/70 px-3 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-navy/55">
+                {t(lang, "dupMatchingProducts")}
+              </p>
+              <ul className="mt-2 space-y-2">
+                {nameMatches.map((product) => (
+                  <li key={product.id}>
+                    <button
+                      type="button"
+                      className="lift w-full rounded-[10px] bg-white px-3 py-2.5 text-start text-sm font-semibold text-navy"
+                      onClick={() => setRestockProduct(product)}
+                    >
+                      {product.name}
+                      {product.variant ? ` · ${product.variant}` : ""}
+                      <span className="mt-0.5 block text-xs font-medium text-navy/55">
+                        {t(lang, "dupAddStock")}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {similar.length > 0 ? (
+            <div className="rounded-[12px] border border-navy/10 bg-white px-3 py-3">
+              <p className="text-xs font-semibold text-navy/55">{t(lang, "dupDidYouMean")}</p>
+              <ul className="mt-2 space-y-1">
+                {similar.map((product) => (
+                  <li key={product.id}>
+                    <button
+                      type="button"
+                      className="text-sm font-semibold text-navy underline-offset-2 hover:underline"
+                      onClick={() => setRestockProduct(product)}
+                    >
+                      {product.name}
+                      {product.variant ? ` (${product.variant})` : ""}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <div className="pt-3">
             <Field id="category" label={t(lang, "category")} error={errors.category}>
               <VoiceInput id="category" lang={lang} value={category} onChange={setCategory} placeholder={t(lang, "categoryPlaceholder")} />
@@ -161,11 +360,15 @@ export default function AddProductPage() {
               label={t(lang, "location")}
               value={location}
               align="start"
-              options={[
-                { value: "warehouse", label: t(lang, "warehouse") },
-                { value: "shop", label: t(lang, "shop") },
-                { value: "online", label: t(lang, "online") },
-              ]}
+              options={
+                places.length
+                  ? places.map((p) => ({ value: p.id, label: p.name }))
+                  : [
+                      { value: "warehouse", label: t(lang, "warehouse") },
+                      { value: "shop", label: t(lang, "shop") },
+                      { value: "online", label: t(lang, "online") },
+                    ]
+              }
               onChange={(value) => setLocation(value as Location)}
             />
           </div>
@@ -294,8 +497,8 @@ export default function AddProductPage() {
             </div>
           )}
 
-          <Button type="submit" full>
-            {t(lang, "save")}
+          <Button type="submit" full disabled={busy || showSuccess}>
+            {busy ? t(lang, "savingEllipsis") : t(lang, "save")}
           </Button>
         </form>
       </div>
@@ -305,7 +508,7 @@ export default function AddProductPage() {
 
 function ThumbsUpIcon() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden className="shrink-0 text-pine">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden className="text-pine">
       <path
         d="M7 11v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1h2Zm0 0V9a3 3 0 0 1 3-3h.5l.7-2.1A2.5 2.5 0 0 1 13.6 2.5L14 2.6a2 2 0 0 1 1.2 2.5L14.5 8H19a2 2 0 0 1 1.9 2.6l-1.2 5A3 3 0 0 1 16.8 18H10a3 3 0 0 1-3-3"
         stroke="currentColor"

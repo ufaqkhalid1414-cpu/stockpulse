@@ -1,7 +1,14 @@
-import { NextResponse } from "next/server";
 import { canResetBusiness, homePathForRole, requireAccess } from "@/lib/access";
 import { ensureDbReady, persistDb } from "@/lib/db";
-import { buildBusinessState, createBusiness, deleteBusiness, findMembershipByPhone } from "@/lib/db/queries";
+import { jsonNoStore } from "@/lib/api-response";
+import { sanitizeBusinessState } from "@/lib/permissions";
+import {
+  buildBusinessState,
+  createBusiness,
+  deleteBusiness,
+  findMembershipForSession,
+} from "@/lib/db/queries";
+import { getAuthAccountByEmail } from "@/lib/auth-accounts";
 import {
   attachBusinessToSession,
   destroySession,
@@ -17,17 +24,18 @@ export async function GET() {
     await ensureDbReady();
     let session = await getSession();
     if (!session) {
-      return NextResponse.json({
+      return jsonNoStore({
         authenticated: false,
         needsSetup: false,
         phone: null,
+        email: null,
         role: null,
         homePath: "/",
         business: null,
       });
     }
 
-    let membership = await findMembershipByPhone(session.phone);
+    let membership = await findMembershipForSession(session);
 
     // Heal session ↔ membership drift (common after SQLite→Firestore cutover).
     if (membership && session.businessId && membership.businessId !== session.businessId) {
@@ -40,10 +48,11 @@ export async function GET() {
     }
 
     if (!session.businessId) {
-      return NextResponse.json({
+      return jsonNoStore({
         authenticated: true,
         needsSetup: true,
-        phone: session.phone,
+        phone: session.phone || null,
+        email: session.email,
         role: null,
         homePath: "/",
         business: null,
@@ -51,10 +60,11 @@ export async function GET() {
     }
 
     if (!membership || membership.businessId !== session.businessId) {
-      return NextResponse.json({
+      return jsonNoStore({
         authenticated: true,
         needsSetup: true,
-        phone: session.phone,
+        phone: session.phone || null,
+        email: session.email,
         role: null,
         homePath: "/",
         business: null,
@@ -63,27 +73,29 @@ export async function GET() {
 
     const state = await buildBusinessState(session.businessId);
     if (!state) {
-      return NextResponse.json({
+      return jsonNoStore({
         authenticated: true,
         needsSetup: true,
-        phone: session.phone,
+        phone: session.phone || null,
+        email: session.email,
         role: null,
         homePath: "/",
         business: null,
       });
     }
-    return NextResponse.json({
+    return jsonNoStore({
       authenticated: true,
       needsSetup: false,
-      phone: session.phone,
+      phone: session.phone || null,
+      email: session.email,
       role: membership.role,
       homePath: homePathForRole(membership.role),
-      business: state,
+      business: sanitizeBusinessState(membership.role, state),
     });
   } catch (err) {
     console.error("[api/business GET]", err);
     // Do not claim authenticated:false on transient DB errors — client keeps prior session.
-    return NextResponse.json(
+    return jsonNoStore(
       {
         error: err instanceof Error ? err.message : "Database unavailable",
         unavailable: true,
@@ -98,7 +110,7 @@ export async function POST(request: Request) {
     await ensureDbReady();
     const session = await requireSession();
     if (!session) {
-      return NextResponse.json({ error: "Please log in with WhatsApp first" }, { status: 401 });
+      return jsonNoStore({ error: "Please log in first" }, { status: 401 });
     }
 
     const body = (await request.json()) as {
@@ -110,7 +122,7 @@ export async function POST(request: Request) {
     if (body.action === "reset") {
       const ctx = await requireAccess();
       if (!ctx || !canResetBusiness(ctx.role)) {
-        return NextResponse.json(
+        return jsonNoStore(
           { error: "Only equal owners can delete the business account" },
           { status: 403 },
         );
@@ -118,41 +130,49 @@ export async function POST(request: Request) {
       await deleteBusiness(ctx.business.id);
       await destroySession();
       await persistDb();
-      return NextResponse.json({ authenticated: false, business: null });
+      return jsonNoStore({ authenticated: false, business: null });
     }
 
     // Staff/owners already on a business cannot create another
     if (session.businessId) {
-      const membership = await findMembershipByPhone(session.phone);
+      const membership = await findMembershipForSession(session);
       if (membership) {
-        return NextResponse.json({ error: "You already have an account on this login" }, { status: 409 });
+        return jsonNoStore({ error: "You already have an account on this login" }, { status: 409 });
       }
     }
 
     if (body.action !== "create" && body.action !== "sample") {
-      return NextResponse.json({ error: "Unknown action" }, { status: 400 });
+      return jsonNoStore({ error: "Unknown action" }, { status: 400 });
     }
 
     const name = (body.name || "").trim() || "General Store";
+    let ownerName = "Owner";
+    if (session.email) {
+      const account = await getAuthAccountByEmail(session.email).catch(() => null);
+      if (account?.name) ownerName = account.name;
+    }
     const created = await createBusiness({
       name,
       language: body.language ?? "en",
-      ownerWhatsapp: session.phone,
+      ownerWhatsapp: session.phone || undefined,
+      ownerEmail: session.email || undefined,
+      ownerName,
       seedSample: body.action === "sample",
     });
     await attachBusinessToSession(created.id);
     await persistDb();
-    return NextResponse.json({
+    return jsonNoStore({
       authenticated: true,
       needsSetup: false,
-      phone: session.phone,
+      phone: session.phone || null,
+      email: session.email,
       role: "equal_owner",
       homePath: "/dashboard",
       business: await buildBusinessState(created.id),
     });
   } catch (err) {
     console.error("[api/business POST]", err);
-    return NextResponse.json(
+    return jsonNoStore(
       { error: err instanceof Error ? err.message : "Could not save your business" },
       { status: 503 },
     );

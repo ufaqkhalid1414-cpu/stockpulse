@@ -3,18 +3,25 @@
 import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
+import { EntryPriceBars, type EntryBarPoint } from "@/components/EntryPriceBars";
 import { Menu } from "@/components/Menu";
-import { PriceBars } from "@/components/PriceBars";
 import { ProductPhoto } from "@/components/ProductPhoto";
 import { AppLink, BackLabel, Button, Field, Lead, Num } from "@/components/ui";
 import { VoiceInput } from "@/components/VoiceInput";
-import { formatMoney, formatPct, formatQty } from "@/lib/format";
+import { formatDateTime, formatMoney, formatPct, formatQty } from "@/lib/format";
 import { t } from "@/lib/i18n";
+import {
+  entryPctChange,
+  formatEntryChartLabel,
+  formatPriceWithUnit,
+  lastNEntries,
+  ppcForEntry,
+  priceInUnit,
+} from "@/lib/price-display";
 import { currentPrice, priceDelta } from "@/lib/metrics";
 import { useStock } from "@/lib/store";
-import type { Location, PricePoint } from "@/lib/types";
+import type { Location, PriceCompareUnit, PriceEntry } from "@/lib/types";
 import {
-  cartonPriceFromPiece,
   formatDeductionConfirm,
   formatPricePerCarton,
   formatPricePerPiece,
@@ -24,36 +31,64 @@ import {
 } from "@/lib/units";
 
 type QtyUnit = "piece" | "carton";
-type ChartUnit = "piece" | "carton";
 type PriceUnit = "piece" | "carton";
+
+function entryDisplayPrice(entry: PriceEntry, unit: PriceCompareUnit, productPpc: number | null): number {
+  const ppc = ppcForEntry(entry, productPpc);
+  const comparePpc = unit === "carton" ? ppc : null;
+  return priceInUnit(entry.pricePerPiece, unit, comparePpc);
+}
 
 export default function PriceHistoryPage() {
   const { id } = useParams<{ id: string }>();
-  const { state, recordSale, recordPurchasePrice, busy, error } = useStock();
+  const { state, role, recordSale, recordPurchasePrice, setPriceCompareUnit, busy, error } = useStock();
   const lang = state.language;
   const product = state.products.find((item) => item.id === id);
+  const isOwner = role === "equal_owner" || role === "co_owner";
 
   const [saleQty, setSaleQty] = useState("1");
   const [saleUnit, setSaleUnit] = useState<QtyUnit>("piece");
   const [saleLocation, setSaleLocation] = useState<Location>("shop");
   const [newPrice, setNewPrice] = useState("");
   const [priceUnit, setPriceUnit] = useState<PriceUnit>("piece");
-  const [chartUnit, setChartUnit] = useState<ChartUnit>("piece");
   const [flash, setFlash] = useState("");
 
   const ppc = product ? piecesPerCartonOf(product) : null;
   const canCarton = Boolean(ppc);
 
-  const chartPoints: PricePoint[] = useMemo(() => {
-    if (!product) return [];
-    if (chartUnit === "carton" && ppc) {
-      return product.priceHistory.map((point) => ({
-        ...point,
-        price: cartonPriceFromPiece(point.price, ppc),
+  const compareUnit: PriceCompareUnit = product?.priceCompareUnit ?? (canCarton ? "carton" : "piece");
+  const effectiveCompareUnit: PriceCompareUnit =
+    compareUnit === "carton" && !canCarton ? "piece" : compareUnit;
+
+  const entries = product?.priceEntries?.length
+    ? product.priceEntries
+    : (product?.priceHistory ?? []).map((point, index) => ({
+        id: String(index),
+        recordedAt: "",
+        pricePerPiece: point.price,
+        piecesPerCarton: product?.piecesPerCarton ?? null,
       }));
-    }
-    return product.priceHistory;
-  }, [product, chartUnit, ppc]);
+
+  const chartBarPoints: EntryBarPoint[] = useMemo(() => {
+    if (!product) return [];
+    const slice = lastNEntries(entries, 6);
+    return slice.map((entry) => {
+      const price = entryDisplayPrice(entry, effectiveCompareUnit, ppc);
+      const dateLabel = entry.recordedAt ? formatEntryChartLabel(entry.recordedAt, lang) : "—";
+      const unitPhrase =
+        effectiveCompareUnit === "carton" && ppc
+          ? t(lang, "chartPerCarton")
+          : t(lang, "chartPerPiece");
+      return {
+        id: entry.id,
+        label: dateLabel,
+        price,
+        tip: `${entry.recordedAt ? formatDateTime(entry.recordedAt, lang) : dateLabel} · ${formatMoney(price)} ${unitPhrase}`,
+      };
+    });
+  }, [product, entries, effectiveCompareUnit, ppc, lang]);
+
+  const entriesNewestFirst = useMemo(() => [...entries].reverse(), [entries]);
 
   if (!product) {
     return (
@@ -68,16 +103,27 @@ export default function PriceHistoryPage() {
 
   const delta = priceDelta(product);
   const price = currentPrice(product);
-  const displayPrice = chartUnit === "carton" && ppc ? cartonPriceFromPiece(price, ppc) : price;
+  const displayPrice = entryDisplayPrice(
+    entries[entries.length - 1] ?? {
+      id: "current",
+      recordedAt: "",
+      pricePerPiece: price,
+      piecesPerCarton: ppc,
+    },
+    effectiveCompareUnit,
+    ppc,
+  );
   const lead =
-    Math.abs(delta) < 0.05
-      ? t(lang, "priceFlat")
-      : delta > 0
-        ? t(lang, "priceUp", { pct: formatPct(delta) })
-        : t(lang, "priceDown", { pct: formatPct(delta) });
+    entries.length < 2
+      ? t(lang, "priceEntryFirst")
+      : Math.abs(delta) < 0.05
+        ? t(lang, "priceFlatFromLastEntry")
+        : delta > 0
+          ? t(lang, "priceUpFromLastEntry", { pct: formatPct(delta) })
+          : t(lang, "priceDownFromLastEntry", { pct: formatPct(delta) });
 
   const chartCaption =
-    chartUnit === "carton" && ppc
+    effectiveCompareUnit === "carton" && ppc
       ? t(lang, "chartShowingCarton", { count: formatQty(ppc) })
       : t(lang, "chartShowingPiece");
 
@@ -95,56 +141,100 @@ export default function PriceHistoryPage() {
 
         {canCarton ? (
           <div className="mt-4">
-            <p className="mb-1.5 text-sm font-medium text-navy/80">{t(lang, "chartUnitLabel")}</p>
+            <p className="mb-1.5 text-sm font-medium text-navy/80">{t(lang, "comparePricesPer")}</p>
             <Menu
-              label={t(lang, "chartUnitLabel")}
-              value={chartUnit}
+              label={t(lang, "comparePricesPer")}
+              value={effectiveCompareUnit}
               align="start"
               options={[
                 { value: "piece", label: t(lang, "chartPerPiece") },
                 { value: "carton", label: t(lang, "chartPerCarton") },
               ]}
-              onChange={(value) => setChartUnit(value as ChartUnit)}
+              onChange={async (value) => {
+                const unit = value as PriceCompareUnit;
+                if (unit === effectiveCompareUnit || !isOwner) return;
+                try {
+                  await setPriceCompareUnit(product.id, unit);
+                } catch {
+                  /* store error */
+                }
+              }}
             />
           </div>
         ) : null}
 
         <div className="card mt-6 p-5 sm:p-6">
-          <p className="mb-3 text-sm font-medium text-navy/70">{chartCaption}</p>
-          <PriceBars
-            points={chartPoints}
-            lang={lang}
+          <p className="mb-1 text-sm font-medium text-navy/70">
+            {t(lang, "chartLastEntries", { count: Math.min(6, entries.length) })}
+          </p>
+          <p className="mb-3 text-sm text-navy/55">{chartCaption}</p>
+          <EntryPriceBars
+            points={chartBarPoints}
             label={`${t(lang, "chartLabel")} — ${chartCaption}`}
-            unitLabel={chartUnit === "carton" ? t(lang, "chartPerCarton") : t(lang, "chartPerPiece")}
           />
         </div>
+
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div className="card p-5">
-            <p className="text-sm text-navy/60">
-              {chartUnit === "carton" && ppc ? t(lang, "chartPerCarton") : t(lang, "thisMonthPricePiece")}
-            </p>
+            <p className="text-sm text-navy/60">{t(lang, "latestEntryPrice")}</p>
             <p className="mt-2 text-3xl font-bold text-navy">
               <Num>{formatMoney(displayPrice)}</Num>
             </p>
             <p className="mt-1 text-sm text-navy/55">
-              {chartUnit === "carton" && ppc
-                ? formatPricePerCarton(price, ppc, lang)
-                : formatPricePerPiece(price, lang)}
+              {formatPriceWithUnit(
+                price,
+                effectiveCompareUnit,
+                effectiveCompareUnit === "carton" ? ppc : null,
+                lang,
+              )}
             </p>
-            {canCarton && chartUnit === "piece" ? (
-              <p className="mt-1 text-sm text-navy/45">{formatPricePerCarton(price, ppc!, lang)}</p>
-            ) : null}
-            {canCarton && chartUnit === "carton" ? (
-              <p className="mt-1 text-sm text-navy/45">{formatPricePerPiece(price, lang)}</p>
-            ) : null}
           </div>
           <div className="card p-5">
-            <p className="text-sm text-navy/60">{t(lang, "changeVsLast")}</p>
+            <p className="text-sm text-navy/60">{t(lang, "changeVsLastEntry")}</p>
             <p className={`mt-2 text-3xl font-bold ${delta > 0.05 ? "text-clay" : delta < -0.05 ? "text-pine" : "text-navy"}`}>
-              {delta > 0.05 ? "↑ " : delta < -0.05 ? "↓ " : ""}
-              <Num>{formatPct(delta)}</Num>
+              {entries.length < 2 ? (
+                "—"
+              ) : (
+                <>
+                  {delta > 0.05 ? "↑ " : delta < -0.05 ? "↓ " : ""}
+                  <Num>{formatPct(delta)}</Num>
+                </>
+              )}
             </p>
           </div>
+        </div>
+
+        <div className="card mt-6 p-5 sm:p-6">
+          <p className="font-semibold text-navy">{t(lang, "priceEntryListTitle")}</p>
+          <ul className="mt-4 divide-y divide-navy/10">
+            {entriesNewestFirst.map((entry, index) => {
+              const older = entriesNewestFirst[index + 1];
+              const inUnit = entryDisplayPrice(entry, effectiveCompareUnit, ppc);
+              const dateText = entry.recordedAt ? formatDateTime(entry.recordedAt, lang) : "—";
+              let changeLine = t(lang, "priceEntryFirst");
+              if (older) {
+                const pct = entryPctChange(older, entry);
+                if (Math.abs(pct) < 0.05) {
+                  changeLine = t(lang, "priceEntryVsPreviousFlat");
+                } else if (pct > 0) {
+                  changeLine = t(lang, "priceEntryVsPreviousUp", { pct: formatPct(pct) });
+                } else {
+                  changeLine = t(lang, "priceEntryVsPreviousDown", { pct: formatPct(pct) });
+                }
+              }
+              return (
+                <li key={entry.id} className="flex flex-wrap items-baseline justify-between gap-2 py-3 first:pt-0">
+                  <div>
+                    <p className="text-sm font-medium text-navy">{dateText}</p>
+                    <p className="text-sm text-navy/55">{changeLine}</p>
+                  </div>
+                  <p className="text-lg font-semibold tabular-nums text-navy">
+                    <Num>{formatMoney(inUnit)}</Num>
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
         </div>
 
         <form
@@ -157,7 +247,7 @@ export default function PriceHistoryPage() {
             const pieces = toPieceQty(entered, unit, ppc);
             if (pieces <= 0) return;
             try {
-              await recordSale(product.id, saleLocation, pieces);
+              await recordSale(product.id, saleLocation, pieces, crypto.randomUUID());
               setFlash(
                 formatDeductionConfirm({
                   lang,

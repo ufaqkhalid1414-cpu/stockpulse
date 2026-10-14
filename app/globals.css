@@ -35,7 +35,7 @@ body {
 
 /* Sticky header is 68px — keep headings just under it (not section padding). */
 .scroll-mt-landing {
-  scroll-margin-top: 5rem;
+  scroll-margin-top: 5.75rem;
 }
 
 html {

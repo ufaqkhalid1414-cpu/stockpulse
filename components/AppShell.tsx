@@ -10,16 +10,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { state, error, role, logout } = useStock();
   const lang = state.language;
-  const isStaff = role === "staff_add" || role === "staff_view";
+  const isStaff =
+    role === "staff_add" || role === "staff_view" || role === "staff_sell" || role === "staff_move";
   const canAdd = role === "equal_owner" || role === "co_owner" || role === "staff_add";
 
   const links = isStaff
-    ? role === "staff_view"
-      ? ([{ href: "/items", key: "navStock" as const }] as const)
-      : ([
+    ? role === "staff_add"
+      ? ([
           { href: "/add-product", key: "addProduct" as const },
           { href: "/items", key: "navStock" as const },
         ] as const)
+      : ([{ href: "/items", key: "navStock" as const }] as const)
     : ([
         { href: "/dashboard", key: "navDashboard" as const },
         { href: "/staff", key: "navPeople" as const },

@@ -1,6 +1,7 @@
 import { formatMoney, formatQty } from "@/lib/format";
 import { t, type Lang } from "@/lib/i18n";
-import type { Location, Product } from "@/lib/types";
+import { placeDisplayName } from "@/lib/places";
+import type { Location, Product, StockPlace } from "@/lib/types";
 
 /** Saved carton size, or null when the product is piece-only. Requires ≥ 2 pieces. */
 export function piecesPerCartonOf(product: Pick<Product, "piecesPerCarton"> | null | undefined): number | null {
@@ -53,10 +54,12 @@ export function formatBothPrices(piecePrice: number, piecesPerCarton: number | n
   return `${piece} · ${formatPricePerCarton(piecePrice, piecesPerCarton, lang)}`;
 }
 
-export function locationLabel(lang: Lang, location: Location) {
+export function locationLabel(lang: Lang, location: Location, places?: StockPlace[]) {
+  if (places?.length) return placeDisplayName(places, location);
   if (location === "warehouse") return t(lang, "warehouse");
   if (location === "shop") return t(lang, "shop");
-  return t(lang, "online");
+  if (location === "online") return t(lang, "online");
+  return placeDisplayName(undefined, location);
 }
 
 export function formatDeductionConfirm(input: {
@@ -65,8 +68,9 @@ export function formatDeductionConfirm(input: {
   entered: number;
   pieces: number;
   location: Location;
+  places?: StockPlace[];
 }) {
-  const place = locationLabel(input.lang, input.location);
+  const place = locationLabel(input.lang, input.location, input.places);
   if (input.unit === "carton") {
     return t(input.lang, "deductCartonConfirm", {
       cartons: formatQty(input.entered),

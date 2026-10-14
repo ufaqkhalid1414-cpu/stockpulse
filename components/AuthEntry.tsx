@@ -1,44 +1,80 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { LanguageMenu } from "@/components/LanguageMenu";
 import { Button, Field } from "@/components/ui";
 import { VoiceInput } from "@/components/VoiceInput";
 import { t } from "@/lib/i18n";
 import { useStock } from "@/lib/store";
 
-/** WhatsApp OTP login + first-time business setup. */
+type AuthView = "chooser" | "whatsapp" | "email-login" | "signup" | "forgot" | "reset";
+
+/** Multi-method login + first-time business setup. */
 export function AuthEntry() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const {
     state,
     authenticated,
     needsSetup,
     phone: sessionPhone,
+    email: sessionEmail,
     startFresh,
     startSample,
     requestOtp,
     verifyOtp,
     busy,
     error: storeError,
+    refresh,
   } = useStock();
   const lang = state.language;
 
+  const [view, setView] = useState<AuthView>("chooser");
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
-  const [step, setStep] = useState<"phone" | "code">("phone");
+  const [waStep, setWaStep] = useState<"phone" | "code">("phone");
   const [devCode, setDevCode] = useState<string | null>(null);
   const [hint, setHint] = useState("");
   const [name, setName] = useState("");
-  const [error, setError] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [resetToken, setResetToken] = useState("");
+  const [localError, setLocalError] = useState("");
+  const [localBusy, setLocalBusy] = useState(false);
+  const [googleConfigured, setGoogleConfigured] = useState<boolean | null>(null);
+  const [businessName, setBusinessName] = useState("");
+  const [setupError, setSetupError] = useState("");
+
+  useEffect(() => {
+    const err = searchParams.get("error");
+    if (err === "google_not_configured") {
+      setLocalError(t(lang, "loginGoogleNotConfigured"));
+    } else if (err === "google_denied" || err === "google_failed") {
+      setLocalError(t(lang, "loginGoogleFailed"));
+    }
+    const token = searchParams.get("reset");
+    if (token) {
+      setResetToken(token);
+      setView("reset");
+    }
+  }, [searchParams, lang]);
+
+  useEffect(() => {
+    fetch("/api/auth/google", { method: "POST" })
+      .then((r) => r.json())
+      .then((data: { configured?: boolean }) => setGoogleConfigured(Boolean(data.configured)))
+      .catch(() => setGoogleConfigured(false));
+  }, []);
 
   async function sendCode() {
-    setError("");
+    setLocalError("");
     setHint("");
     setDevCode(null);
     try {
       const result = await requestOtp(phone);
-      setStep("code");
+      setWaStep("code");
       if (result.devCode) {
         setDevCode(result.devCode);
         setHint(result.warning || t(lang, "otpDevHint"));
@@ -51,7 +87,7 @@ export function AuthEntry() {
   }
 
   async function confirmCode() {
-    setError("");
+    setLocalError("");
     try {
       await verifyOtp(phone, code.trim());
     } catch {
@@ -59,20 +95,78 @@ export function AuthEntry() {
     }
   }
 
+  async function emailAction(action: "signup" | "login" | "forgot" | "reset") {
+    setLocalError("");
+    setHint("");
+    setLocalBusy(true);
+    try {
+      const res = await fetch("/api/auth/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          email,
+          password,
+          name,
+          token: resetToken,
+        }),
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        warning?: string;
+        resetToken?: string;
+        needsSetup?: boolean;
+        homePath?: string;
+      };
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      if (action === "forgot") {
+        if (data.resetToken) {
+          setResetToken(data.resetToken);
+          setView("reset");
+          setHint(data.warning || t(lang, "loginResetDevHint"));
+        } else {
+          setHint(data.warning || t(lang, "loginForgotSent"));
+        }
+        return;
+      }
+      await refresh();
+      if (data.needsSetup === false && data.homePath) {
+        router.replace(data.homePath);
+      }
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : "Request failed");
+    } finally {
+      setLocalBusy(false);
+    }
+  }
+
   async function startReal() {
-    const trimmed = name.trim();
+    const trimmed = businessName.trim();
     if (!trimmed) {
-      setError(t(lang, "nameRequired"));
+      setSetupError(t(lang, "nameRequired"));
       return;
     }
     await startFresh(trimmed);
   }
 
   async function startWithSample() {
-    await startSample(name.trim() || "General Store");
+    await startSample(businessName.trim() || "General Store");
   }
 
-  if (!authenticated) {
+  const working = busy || localBusy;
+  const alertError = localError || storeError;
+
+  function Shell({
+    title,
+    body,
+    children,
+    backToChooser,
+  }: {
+    title: string;
+    body?: string;
+    children: React.ReactNode;
+    backToChooser?: boolean;
+  }) {
     return (
       <div className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center px-4 py-10 sm:px-6">
         <div className="mb-8 flex items-start justify-between gap-4">
@@ -84,81 +178,280 @@ export function AuthEntry() {
           </div>
           <LanguageMenu align="end" />
         </div>
-        <h1 className="text-3xl font-bold leading-tight tracking-tight text-navy sm:text-4xl">
-          {t(lang, "loginTitle")}
-        </h1>
-        <p className="mt-3 text-base leading-relaxed text-navy/70">{t(lang, "loginBody")}</p>
-
-        {step === "phone" ? (
-          <div className="card mt-8 space-y-4 p-5 sm:p-6">
-            <Field id="wa-login" label={t(lang, "loginWhatsapp")}>
-              <VoiceInput
-                id="wa-login"
-                lang={lang}
-                value={phone}
-                onChange={setPhone}
-                placeholder={t(lang, "whatsappPlaceholder")}
-                dir="ltr"
-                autoComplete="tel"
-              />
-            </Field>
-            <p className="text-xs text-navy/55">{t(lang, "loginWhatsappHint")}</p>
-            <Button full disabled={busy} onClick={sendCode}>
-              {t(lang, "sendCode")}
-            </Button>
-          </div>
-        ) : (
-          <div className="card mt-8 space-y-4 p-5 sm:p-6">
-            <p className="text-sm text-navy/70">
-              {t(lang, "otpSentTo")} <span dir="ltr" className="font-semibold text-navy">{phone}</span>
-            </p>
-            <Field id="otp-code" label={t(lang, "otpCode")}>
-              <VoiceInput
-                id="otp-code"
-                lang={lang}
-                value={code}
-                onChange={setCode}
-                placeholder="123456"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                dir="ltr"
-              />
-            </Field>
-            {devCode ? (
-              <p className="rounded-xl bg-cream px-3 py-2 text-sm text-navy" role="status">
-                {t(lang, "otpDevCode")}: <strong dir="ltr">{devCode}</strong>
-              </p>
-            ) : null}
-            {hint ? <p className="text-sm text-navy/65">{hint}</p> : null}
-            <Button full disabled={busy} onClick={confirmCode}>
-              {t(lang, "verifyCode")}
-            </Button>
-            <Button
-              full
-              variant="secondary"
-              disabled={busy}
-              onClick={() => {
-                setStep("phone");
-                setCode("");
-                setDevCode(null);
-                setHint("");
-              }}
-            >
-              {t(lang, "changeNumber")}
-            </Button>
-          </div>
-        )}
-
-        {storeError ? (
+        <h1 className="text-3xl font-bold leading-tight tracking-tight text-navy sm:text-4xl">{title}</h1>
+        {body ? <p className="mt-3 text-base leading-relaxed text-navy/70">{body}</p> : null}
+        {children}
+        {alertError ? (
           <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
-            {storeError}
+            {alertError}
           </p>
+        ) : null}
+        {backToChooser ? (
+          <button
+            type="button"
+            className="mt-6 text-sm font-semibold text-navy/65 underline-offset-4 hover:underline"
+            onClick={() => {
+              setView("chooser");
+              setLocalError("");
+              setHint("");
+              setWaStep("phone");
+              setCode("");
+              setDevCode(null);
+            }}
+          >
+            {t(lang, "loginBackMethods")}
+          </button>
         ) : null}
       </div>
     );
   }
 
+  if (!authenticated) {
+    if (view === "chooser") {
+      return (
+        <Shell title={t(lang, "loginTitle")} body={t(lang, "loginBody")}>
+          <div className="mt-8 space-y-3">
+            <Button full disabled={working} onClick={() => setView("whatsapp")}>
+              {t(lang, "loginWithWhatsapp")}
+            </Button>
+            {googleConfigured === false ? (
+              <Button full variant="secondary" disabled>
+                {t(lang, "loginWithGoogle")}
+              </Button>
+            ) : (
+              <a
+                href="/api/auth/google"
+                className={`depth lift inline-flex w-full items-center justify-center rounded-full border border-navy/20 bg-white px-6 py-3 text-sm font-semibold text-navy ${
+                  working || googleConfigured === null ? "pointer-events-none opacity-50" : ""
+                }`}
+              >
+                {t(lang, "loginWithGoogle")}
+              </a>
+            )}
+            <Button full variant="secondary" disabled={working} onClick={() => setView("email-login")}>
+              {t(lang, "loginWithEmail")}
+            </Button>
+          </div>
+          <div className="mt-8 flex flex-col gap-3 text-center text-sm">
+            <button
+              type="button"
+              className="font-semibold text-navy underline-offset-4 hover:underline"
+              onClick={() => setView("signup")}
+            >
+              {t(lang, "loginCreateAccount")}
+            </button>
+            <button
+              type="button"
+              className="text-navy/60 underline-offset-4 hover:underline"
+              onClick={() => setView("forgot")}
+            >
+              {t(lang, "loginForgotPassword")}
+            </button>
+          </div>
+          {googleConfigured === false ? (
+            <p className="mt-4 text-xs leading-relaxed text-navy/50">{t(lang, "loginGoogleNotConfigured")}</p>
+          ) : null}
+        </Shell>
+      );
+    }
+
+    if (view === "whatsapp") {
+      return (
+        <Shell title={t(lang, "loginWhatsappTitle")} body={t(lang, "loginWhatsappBody")} backToChooser>
+          {waStep === "phone" ? (
+            <div className="card mt-8 space-y-4 p-5 sm:p-6">
+              <Field id="wa-login" label={t(lang, "loginWhatsapp")}>
+                <VoiceInput
+                  id="wa-login"
+                  lang={lang}
+                  value={phone}
+                  onChange={setPhone}
+                  placeholder={t(lang, "whatsappPlaceholder")}
+                  dir="ltr"
+                  autoComplete="tel"
+                />
+              </Field>
+              <p className="text-xs text-navy/55">{t(lang, "loginWhatsappHint")}</p>
+              <Button full disabled={working} onClick={sendCode}>
+                {t(lang, "sendCode")}
+              </Button>
+            </div>
+          ) : (
+            <div className="card mt-8 space-y-4 p-5 sm:p-6">
+              <p className="text-sm text-navy/70">
+                {t(lang, "otpSentTo")} <span dir="ltr" className="font-semibold text-navy">{phone}</span>
+              </p>
+              <Field id="otp-code" label={t(lang, "otpCode")}>
+                <VoiceInput
+                  id="otp-code"
+                  lang={lang}
+                  value={code}
+                  onChange={setCode}
+                  placeholder="123456"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  dir="ltr"
+                />
+              </Field>
+              {devCode ? (
+                <p className="rounded-xl bg-cream px-3 py-2 text-sm text-navy" role="status">
+                  {t(lang, "otpDevCode")}: <strong dir="ltr">{devCode}</strong>
+                </p>
+              ) : null}
+              {hint ? <p className="text-sm text-navy/65">{hint}</p> : null}
+              <Button full disabled={working} onClick={confirmCode}>
+                {t(lang, "verifyCode")}
+              </Button>
+              <Button
+                full
+                variant="secondary"
+                disabled={working}
+                onClick={() => {
+                  setWaStep("phone");
+                  setCode("");
+                  setDevCode(null);
+                  setHint("");
+                }}
+              >
+                {t(lang, "changeNumber")}
+              </Button>
+            </div>
+          )}
+        </Shell>
+      );
+    }
+
+    if (view === "email-login") {
+      return (
+        <Shell title={t(lang, "loginEmailTitle")} body={t(lang, "loginEmailBody")} backToChooser>
+          <div className="card mt-8 space-y-4 p-5 sm:p-6">
+            <Field id="email-login" label={t(lang, "loginEmail")}>
+              <input
+                id="email-login"
+                type="email"
+                className="field"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                dir="ltr"
+              />
+            </Field>
+            <Field id="password-login" label={t(lang, "loginPassword")}>
+              <input
+                id="password-login"
+                type="password"
+                className="field"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                dir="ltr"
+              />
+            </Field>
+            <Button full disabled={working} onClick={() => emailAction("login")}>
+              {t(lang, "verifyCode")}
+            </Button>
+            <button
+              type="button"
+              className="w-full text-center text-sm text-navy/60 underline-offset-4 hover:underline"
+              onClick={() => setView("forgot")}
+            >
+              {t(lang, "loginForgotPassword")}
+            </button>
+          </div>
+        </Shell>
+      );
+    }
+
+    if (view === "signup") {
+      return (
+        <Shell title={t(lang, "loginSignupTitle")} body={t(lang, "loginSignupBody")} backToChooser>
+          <div className="card mt-8 space-y-4 p-5 sm:p-6">
+            <Field id="signup-name" label={t(lang, "loginYourName")}>
+              <VoiceInput id="signup-name" lang={lang} value={name} onChange={setName} autoComplete="name" />
+            </Field>
+            <Field id="signup-email" label={t(lang, "loginEmail")}>
+              <input
+                id="signup-email"
+                type="email"
+                className="field"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                dir="ltr"
+              />
+            </Field>
+            <Field id="signup-password" label={t(lang, "loginPassword")}>
+              <input
+                id="signup-password"
+                type="password"
+                className="field"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+                dir="ltr"
+              />
+            </Field>
+            <p className="text-xs text-navy/55">{t(lang, "loginPasswordHint")}</p>
+            <Button full disabled={working} onClick={() => emailAction("signup")}>
+              {t(lang, "loginCreateAccount")}
+            </Button>
+          </div>
+        </Shell>
+      );
+    }
+
+    if (view === "forgot") {
+      return (
+        <Shell title={t(lang, "loginForgotTitle")} body={t(lang, "loginForgotBody")} backToChooser>
+          <div className="card mt-8 space-y-4 p-5 sm:p-6">
+            <Field id="forgot-email" label={t(lang, "loginEmail")}>
+              <input
+                id="forgot-email"
+                type="email"
+                className="field"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                dir="ltr"
+              />
+            </Field>
+            {hint ? <p className="text-sm text-navy/65">{hint}</p> : null}
+            <Button full disabled={working} onClick={() => emailAction("forgot")}>
+              {t(lang, "loginSendReset")}
+            </Button>
+          </div>
+        </Shell>
+      );
+    }
+
+    if (view === "reset") {
+      return (
+        <Shell title={t(lang, "loginResetTitle")} body={t(lang, "loginResetBody")} backToChooser>
+          <div className="card mt-8 space-y-4 p-5 sm:p-6">
+            {hint ? <p className="text-sm text-navy/65">{hint}</p> : null}
+            <Field id="reset-password" label={t(lang, "loginNewPassword")}>
+              <input
+                id="reset-password"
+                type="password"
+                className="field"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+                dir="ltr"
+              />
+            </Field>
+            <p className="text-xs text-navy/55">{t(lang, "loginPasswordHint")}</p>
+            <Button full disabled={working || !resetToken} onClick={() => emailAction("reset")}>
+              {t(lang, "loginSavePassword")}
+            </Button>
+          </div>
+        </Shell>
+      );
+    }
+  }
+
   if (needsSetup) {
+    const identity = sessionPhone || sessionEmail;
     return (
       <div className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center px-4 py-10 sm:px-6">
         <div className="mb-8 flex items-start justify-between gap-4">
@@ -172,21 +465,21 @@ export function AuthEntry() {
           {t(lang, "setupTitle")}
         </h1>
         <p className="mt-3 text-base leading-relaxed text-navy/70">{t(lang, "setupBody")}</p>
-        {sessionPhone ? (
+        {identity ? (
           <p className="mt-2 text-sm text-navy/60">
-            {t(lang, "loggedInAs")} <span dir="ltr" className="font-semibold text-navy">{sessionPhone}</span>
+            {t(lang, "loggedInAs")} <span dir="ltr" className="font-semibold text-navy">{identity}</span>
           </p>
         ) : null}
 
         <div className="card mt-8 p-5 sm:p-6">
-          <Field id="business" label={t(lang, "businessName")} error={error}>
+          <Field id="business" label={t(lang, "businessName")} error={setupError}>
             <VoiceInput
               id="business"
               lang={lang}
-              value={name}
+              value={businessName}
               onChange={(next) => {
-                setName(next);
-                if (error) setError("");
+                setBusinessName(next);
+                if (setupError) setSetupError("");
               }}
               placeholder={t(lang, "businessNamePlaceholder")}
               autoComplete="organization"

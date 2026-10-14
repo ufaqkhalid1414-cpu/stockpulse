@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ensureDbReady, persistDb, usingFirestore } from "@/lib/db";
 import { runDailyBackups } from "@/lib/db/queries";
+import { logInfo } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +32,7 @@ export async function GET(request: Request) {
 
   const ok = results.filter((r) => r.ok).length;
   const failed = results.length - ok;
+  logInfo("daily_backup_cron_run", { businesses: results.length, ok, failed });
 
   return NextResponse.json({
     ok: failed === 0,

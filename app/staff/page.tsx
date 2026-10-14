@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Menu } from "@/components/Menu";
+import { SuccessPopup } from "@/components/SuccessPopup";
 import { Button, Field, Lead } from "@/components/ui";
 import { VoiceInput } from "@/components/VoiceInput";
 import { formatAdded } from "@/lib/format";
-import { t } from "@/lib/i18n";
+import { t, type CopyKey } from "@/lib/i18n";
+import { permissionLabelKey } from "@/lib/staff-permission";
 import { useStock } from "@/lib/store";
 import type { OwnerAccess, Permission } from "@/lib/types";
 
@@ -20,13 +22,28 @@ export default function StaffPage() {
 
   const [phone, setPhone] = useState("");
   const [personName, setPersonName] = useState("");
-  const [permission, setPermission] = useState<Permission>("add");
+  const [permission, setPermission] = useState<Permission>("view");
   const [staffError, setStaffError] = useState("");
 
   const [ownerName, setOwnerName] = useState("");
   const [ownerPhone, setOwnerPhone] = useState("");
   const [ownerAccess, setOwnerAccess] = useState<OwnerAccess>("equal");
   const [ownerError, setOwnerError] = useState("");
+
+  const [showSuccess, setShowSuccess] = useState(false);
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
+  function flashSuccess() {
+    setShowSuccess(true);
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    successTimerRef.current = setTimeout(() => setShowSuccess(false), 1100);
+  }
 
   const staffCount = state.staff.length;
   const owners = state.owners.length > 0
@@ -64,9 +81,10 @@ export default function StaffPage() {
       await addStaff(trimmedName, trimmed, permission);
       setPhone("");
       setPersonName("");
-      setPermission("add");
+      setPermission("view");
       setStaffError("");
       setStaffOpen(false);
+      flashSuccess();
     } catch {
       /* store error */
     }
@@ -95,14 +113,25 @@ export default function StaffPage() {
       setOwnerAccess("equal");
       setOwnerError("");
       setOwnerOpen(false);
+      flashSuccess();
     } catch {
       /* store error */
     }
   }
 
+  function staffPermissionLabel(p: Permission) {
+    return t(lang, permissionLabelKey(p) as CopyKey);
+  }
+
   return (
     <AppShell>
       <Lead title={t(lang, "peopleTitle")} support={t(lang, "peopleSupport")} />
+
+      <SuccessPopup
+        open={showSuccess}
+        label={t(lang, "personAddedSuccess")}
+        onDismiss={() => setShowSuccess(false)}
+      />
 
       <section className="mt-8">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -128,7 +157,6 @@ export default function StaffPage() {
                 }}
                 placeholder={t(lang, "staffNamePlaceholder")}
                 autoComplete="name"
-                required
               />
             </Field>
             <Field id="owner-phone" label={t(lang, "whatsapp")} error={ownerError || undefined}>
@@ -250,8 +278,6 @@ export default function StaffPage() {
                   if (staffError) setStaffError("");
                 }}
                 placeholder={t(lang, "staffNamePlaceholder")}
-                autoComplete="name"
-                required
               />
             </Field>
             <Field
@@ -278,8 +304,10 @@ export default function StaffPage() {
                 value={permission}
                 align="start"
                 options={[
-                  { value: "add", label: t(lang, "canAdd") },
-                  { value: "view", label: t(lang, "viewOnly") },
+                  { value: "view", label: t(lang, "permView") },
+                  { value: "add", label: t(lang, "permAdd") },
+                  { value: "sell", label: t(lang, "permSell") },
+                  { value: "move", label: t(lang, "permMove") },
                 ]}
                 onChange={(value) => setPermission(value as Permission)}
               />
@@ -304,9 +332,7 @@ export default function StaffPage() {
                 {member.phone}
               </p>
               <p className="mt-1 text-sm text-navy/60">{formatAdded(member.addedAt, lang)}</p>
-              <p className="mt-3 text-sm font-semibold text-navy">
-                {member.permission === "add" ? t(lang, "canAdd") : t(lang, "viewOnly")}
-              </p>
+              <p className="mt-3 text-sm font-semibold text-navy">{staffPermissionLabel(member.permission)}</p>
             </li>
           ))}
         </ul>

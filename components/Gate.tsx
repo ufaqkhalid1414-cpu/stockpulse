@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { useStock } from "@/lib/store";
 import type { AccessRole } from "@/lib/types";
 
-const OWNER_ONLY = ["/dashboard", "/settings", "/staff", "/low-stock"];
+const OWNER_ONLY = ["/dashboard", "/settings", "/staff", "/low-stock", "/activity", "/import"];
 const STAFF_BLOCKED_PREFIX = "/prices";
 const PUBLIC = ["/", "/login", "/privacy", "/terms"];
 
@@ -15,10 +15,13 @@ function pathAllowed(pathname: string, role: AccessRole | null) {
   if (pathname === "/dashboard" || OWNER_ONLY.includes(pathname) || pathname.startsWith(STAFF_BLOCKED_PREFIX)) {
     return false;
   }
-  if (role === "staff_view") {
+  if (role === "staff_add") {
+    return pathname === "/add-product" || pathname === "/items" || PUBLIC.includes(pathname);
+  }
+  if (role === "staff_view" || role === "staff_sell" || role === "staff_move") {
     return pathname === "/items" || PUBLIC.includes(pathname);
   }
-  return pathname === "/add-product" || pathname === "/items" || PUBLIC.includes(pathname);
+  return false;
 }
 
 export function Gate({ children }: { children: React.ReactNode }) {

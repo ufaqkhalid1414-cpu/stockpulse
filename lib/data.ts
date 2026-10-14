@@ -1,30 +1,94 @@
-import type { AppState, Product, StaffMember } from "@/lib/types";
+import type { AppState, PriceCompareUnit, PriceEntry, Product, StaffMember } from "@/lib/types";
 import type { Lang } from "@/lib/i18n";
+import { DEFAULT_PLACES } from "@/lib/places";
+import { syncQtyMirrors } from "@/lib/stock-math";
 
 const months = ["apr", "may", "jun", "jul", "aug", "sep"];
+
+const MONTH_INDEX: Record<string, number> = {
+  jan: 0,
+  feb: 1,
+  mar: 2,
+  apr: 3,
+  may: 4,
+  jun: 5,
+  jul: 6,
+  aug: 7,
+  sep: 8,
+  oct: 9,
+  nov: 10,
+  dec: 11,
+};
 
 function history(prices: number[]) {
   return months.map((month, index) => ({ month, price: prices[index] }));
 }
 
+function entriesFromHistory(
+  productId: string,
+  priceHistory: Product["priceHistory"],
+  piecesPerCarton: number | null,
+): PriceEntry[] {
+  const year = 2025;
+  return priceHistory.map((point, index) => {
+    const month = MONTH_INDEX[point.month] ?? 3;
+    const day = Math.min(28, 4 + index * 4);
+    return {
+      id: `${productId}-ph-${index}`,
+      recordedAt: new Date(Date.UTC(year, month, day, 10, 0, 0)).toISOString(),
+      pricePerPiece: point.price,
+      piecesPerCarton,
+    };
+  });
+}
+
+function defaultCompareUnit(piecesPerCarton: number | null): PriceCompareUnit {
+  return piecesPerCarton && piecesPerCarton >= 2 ? "carton" : "piece";
+}
+
 export const SAMPLE_BUSINESS_NAME = "General Store";
 
-export function hydrateProduct(product: Product): Product {
+type ProductSeed = Omit<Product, "priceCompareUnit" | "priceEntries"> &
+  Partial<Pick<Product, "priceCompareUnit" | "priceEntries">>;
+
+export function hydrateProduct(product: ProductSeed): Product {
   const sample = sampleProducts.find((item) => item.id === product.id);
-  if (sample) {
-    return {
-      ...product,
-      warehouseQty: sample.warehouseQty,
-      shopQty: sample.shopQty,
-      onlineQty: sample.onlineQty,
-    };
-  }
+  const base: ProductSeed = sample
+    ? {
+        ...product,
+        warehouseQty: sample.warehouseQty,
+        shopQty: sample.shopQty,
+        onlineQty: sample.onlineQty,
+      }
+    : {
+        ...product,
+        warehouseQty: product.warehouseQty ?? 0,
+        shopQty: product.shopQty ?? 0,
+        onlineQty: product.onlineQty ?? 0,
+        piecesPerCarton: product.piecesPerCarton ?? null,
+      };
+
+  const ppc = base.piecesPerCarton ?? null;
+  const priceHistory = base.priceHistory?.length ? base.priceHistory : flatHistory(base.purchasePrice);
+  const priceEntries =
+    base.priceEntries && base.priceEntries.length > 0
+      ? base.priceEntries
+      : entriesFromHistory(base.id, priceHistory, ppc);
+  const priceCompareUnit = base.priceCompareUnit ?? defaultCompareUnit(ppc);
+
+  const qtys = syncQtyMirrors({
+    warehouse: base.warehouseQty ?? 0,
+    shop: base.shopQty ?? 0,
+    online: base.onlineQty ?? 0,
+    ...(base.stockByPlace || {}),
+  });
   return {
-    ...product,
-    warehouseQty: product.warehouseQty ?? 0,
-    shopQty: product.shopQty ?? 0,
-    onlineQty: product.onlineQty ?? 0,
-    piecesPerCarton: product.piecesPerCarton ?? null,
+    ...base,
+    ...qtys,
+    priceHistory,
+    priceEntries,
+    priceCompareUnit,
+    piecesPerCarton: ppc,
   };
 }
 
@@ -32,7 +96,7 @@ export function flatHistory(price: number) {
   return history(months.map(() => price));
 }
 
-const sampleProducts: Product[] = [
+const sampleProducts: ProductSeed[] = [
   {
     id: "rice",
     name: "Basmati Rice",
@@ -225,6 +289,7 @@ export function createSampleState(businessName: string, language: Lang): AppStat
       ...product,
       priceHistory: product.priceHistory.map((point) => ({ ...point })),
     })),
+    places: DEFAULT_PLACES.map((p) => ({ ...p })),
     staff: sampleStaff.map((member) => ({ ...member })),
     owners: [],
     lastBackup: thisMorning(),
@@ -250,6 +315,7 @@ export const defaultState: AppState = {
   businessName: "",
   language: "en",
   products: [],
+  places: DEFAULT_PLACES.map((p) => ({ ...p })),
   staff: [],
   owners: [],
   lastBackup: null,

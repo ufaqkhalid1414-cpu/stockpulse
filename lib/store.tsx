@@ -21,6 +21,7 @@ type StoreValue = {
   authenticated: boolean;
   needsSetup: boolean;
   phone: string | null;
+  email: string | null;
   role: AccessRole | null;
   homePath: string;
   state: AppState;
@@ -29,7 +30,7 @@ type StoreValue = {
   setOwnerWhatsapp: (ownerWhatsapp: string) => Promise<void>;
   requestOtp: (phone: string) => Promise<{ sent: boolean; devCode?: string; warning?: string }>;
   verifyOtp: (phone: string, code: string) => Promise<void>;
-  logout: () => Promise<void>;
+  logout: (everywhere?: boolean) => Promise<void>;
   startFresh: (businessName: string) => Promise<void>;
   startSample: (businessName: string) => Promise<void>;
   addProduct: (input: {
@@ -43,7 +44,54 @@ type StoreValue = {
     restockThreshold?: number;
     piecesPerCarton?: number | null;
   }) => Promise<void>;
-  recordSale: (productId: string, location: Location, quantity: number) => Promise<{ alert: AlertItem | null }>;
+  recordSale: (
+    productId: string,
+    location: Location,
+    quantity: number,
+    idempotencyKey: string,
+  ) => Promise<{
+    alert: AlertItem | null;
+    product: Product;
+    neededRecount: boolean;
+    note: string | null;
+    appHad: number | null;
+  }>;
+  addStock: (input: {
+    productId: string;
+    location: Location;
+    quantity: number;
+    idempotencyKey: string;
+  }) => Promise<{ product: Product }>;
+  moveStock: (input: {
+    productId: string;
+    from: Location;
+    to: Location;
+    quantity: number;
+    idempotencyKey: string;
+  }) => Promise<{
+    product: Product;
+    neededRecount: boolean;
+    note: string | null;
+    appHad: number | null;
+  }>;
+  correctCount: (input: {
+    productId: string;
+    location: Location;
+    newCount: number;
+    idempotencyKey: string;
+  }) => Promise<{ product: Product }>;
+  editProduct: (input: {
+    productId: string;
+    name?: string;
+    category?: string;
+    variant?: string;
+    photo?: string | null;
+    restockThreshold?: number;
+    piecesPerCarton?: number | null;
+  }) => Promise<void>;
+  setPriceCompareUnit: (productId: string, unit: "piece" | "carton") => Promise<void>;
+  archiveProduct: (productId: string) => Promise<void>;
+  restoreProduct: (productId: string) => Promise<void>;
   addStaff: (name: string, phone: string, permission: Permission) => Promise<void>;
   addOwner: (name: string, phone: string, access: OwnerAccess) => Promise<void>;
   removeOwner: (ownerId: string) => Promise<void>;
@@ -53,6 +101,15 @@ type StoreValue = {
   sendMonthlyChart: (productId?: string) => Promise<void>;
   /** @deprecated use sendMonthlyChart */
   sendWeeklyChart: (productId?: string) => Promise<void>;
+  updateNotificationPrefs: (prefs: Record<string, unknown>) => Promise<void>;
+  requestChangeMyNumber: (newPhone: string) => Promise<{ sent: boolean; newPhone: string; devCode?: string }>;
+  confirmChangeMyNumber: (newPhone: string, code: string) => Promise<void>;
+  addPlace: (kind: "warehouse" | "shop" | "online", name: string) => Promise<void>;
+  renamePlace: (placeId: string, name: string) => Promise<void>;
+  removePlace: (placeId: string) => Promise<void>;
+  addWarehouse: (name: string) => Promise<void>;
+  renameWarehouse: (placeId: string, name: string) => Promise<void>;
+  removeWarehouse: (placeId: string) => Promise<void>;
   connectShopify: (shopDomain: string, accessToken: string) => Promise<void>;
   syncShopify: () => Promise<{ count: number }>;
   disconnectShopify: () => Promise<void>;
@@ -77,6 +134,7 @@ function toState(business: ApiBusiness | null | undefined): AppState {
     businessName: business.businessName,
     language: business.language,
     products: business.products ?? [],
+    places: business.places?.length ? business.places : defaultState.places,
     staff: business.staff ?? [],
     owners: business.owners ?? [],
     lastBackup: business.lastBackup ?? null,
@@ -88,6 +146,7 @@ function toState(business: ApiBusiness | null | undefined): AppState {
     alerts: business.alerts ?? [],
     isSample: Boolean(business.isSample),
     shopify: business.shopify ?? defaultState.shopify,
+    archivedProducts: business.archivedProducts ?? [],
   };
 }
 
@@ -106,11 +165,14 @@ async function readJson(res: Response) {
     business?: ApiBusiness | null;
     error?: string;
     alert?: AlertItem | null;
+    product?: Product | null;
+    replayed?: boolean;
     preview?: string;
     sent?: unknown;
     authenticated?: boolean;
     needsSetup?: boolean;
     phone?: string | null;
+    email?: string | null;
     role?: AccessRole | null;
     homePath?: string;
     ok?: boolean;
@@ -119,6 +181,10 @@ async function readJson(res: Response) {
     devCode?: string;
     warning?: string;
     sentWhatsapp?: boolean;
+    newPhone?: string;
+    neededRecount?: boolean;
+    note?: string | null;
+    appHad?: number;
   };
   try {
     data = (await res.json()) as typeof data;
@@ -137,6 +203,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [authenticated, setAuthenticated] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [phone, setPhone] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
   const [role, setRole] = useState<AccessRole | null>(null);
   const [homePath, setHomePath] = useState("/dashboard");
 
@@ -151,6 +218,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setAuthenticated(Boolean(data.authenticated));
     setNeedsSetup(Boolean(data.needsSetup));
     setPhone(data.phone ?? null);
+    setEmail(data.email ?? null);
     setRole(data.role ?? null);
     setHomePath(data.homePath || "/dashboard");
     setState(toState(data.business));
@@ -242,18 +310,26 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [refresh, run],
   );
 
-  const logout = useCallback(async () => {
-    await run(async () => {
-      const res = await fetch("/api/auth/logout", { method: "POST" });
-      await readJson(res);
-      setAuthenticated(false);
-      setNeedsSetup(false);
-      setPhone(null);
-      setRole(null);
-      setHomePath("/");
-      setState(defaultState);
-    });
-  }, [run]);
+  const logout = useCallback(
+    async (everywhere = false) => {
+      await run(async () => {
+        const res = await fetch("/api/auth/logout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ everywhere }),
+        });
+        await readJson(res);
+        setAuthenticated(false);
+        setNeedsSetup(false);
+        setPhone(null);
+        setEmail(null);
+        setRole(null);
+        setHomePath("/");
+        setState(defaultState);
+      });
+    },
+    [run],
+  );
 
   const setLanguage = useCallback(
     async (language: Lang) => {
@@ -373,11 +449,103 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   );
 
   const recordSale = useCallback(
-    async (productId: string, location: Location, quantity: number) => {
+    async (productId: string, location: Location, quantity: number, idempotencyKey: string) => {
       return run(async () => {
-        const data = await stockAction({ action: "recordSale", productId, location, quantity });
+        const data = await stockAction({ action: "recordSale", productId, location, quantity, idempotencyKey });
         setState(toState(data.business));
-        return { alert: (data.alert as AlertItem | null) ?? null };
+        return {
+          alert: (data.alert as AlertItem | null) ?? null,
+          product: data.product as Product,
+          neededRecount: Boolean(data.neededRecount),
+          note: (data.note as string | null) ?? null,
+          appHad: typeof data.appHad === "number" ? data.appHad : null,
+        };
+      });
+    },
+    [run, stockAction],
+  );
+
+  const addStock = useCallback(
+    async (input: { productId: string; location: Location; quantity: number; idempotencyKey: string }) => {
+      return run(async () => {
+        const data = await stockAction({ action: "addStock", ...input });
+        setState(toState(data.business));
+        return { product: data.product as Product };
+      });
+    },
+    [run, stockAction],
+  );
+
+  const moveStock = useCallback(
+    async (input: { productId: string; from: Location; to: Location; quantity: number; idempotencyKey: string }) => {
+      return run(async () => {
+        const data = await stockAction({ action: "moveStock", ...input });
+        setState(toState(data.business));
+        return {
+          product: data.product as Product,
+          neededRecount: Boolean(data.neededRecount),
+          note: (data.note as string | null) ?? null,
+          appHad: typeof data.appHad === "number" ? data.appHad : null,
+        };
+      });
+    },
+    [run, stockAction],
+  );
+
+  const correctCount = useCallback(
+    async (input: { productId: string; location: Location; newCount: number; idempotencyKey: string }) => {
+      return run(async () => {
+        const data = await stockAction({ action: "correctCount", ...input });
+        setState(toState(data.business));
+        return { product: data.product as Product };
+      });
+    },
+    [run, stockAction],
+  );
+
+  const editProduct = useCallback(
+    async (input: {
+      productId: string;
+      name?: string;
+      category?: string;
+      variant?: string;
+      photo?: string | null;
+      restockThreshold?: number;
+      piecesPerCarton?: number | null;
+    }) => {
+      await run(async () => {
+        const data = await stockAction({ action: "editProduct", ...input });
+        setState(toState(data.business));
+      });
+    },
+    [run, stockAction],
+  );
+
+  const setPriceCompareUnit = useCallback(
+    async (productId: string, unit: "piece" | "carton") => {
+      await run(async () => {
+        const data = await stockAction({ action: "setPriceCompareUnit", productId, unit });
+        setState(toState(data.business));
+      });
+    },
+    [run, stockAction],
+  );
+
+  const archiveProduct = useCallback(
+    async (productId: string) => {
+      await run(async () => {
+        const data = await stockAction({ action: "archiveProduct", productId });
+        setState(toState(data.business));
+      });
+    },
+    [run, stockAction],
+  );
+
+  const restoreProduct = useCallback(
+    async (productId: string) => {
+      await run(async () => {
+        const data = await stockAction({ action: "restoreProduct", productId });
+        setState(toState(data.business));
       });
     },
     [run, stockAction],
@@ -404,9 +572,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const sendDailyReport = useCallback(async () => {
     return run(async () => {
       const data = await stockAction({ action: "sendDailyReport" });
-      const sent = data.sent as { ok?: boolean; skipped?: boolean } | undefined;
-      if (sent?.skipped) {
-        throw new Error("WhatsApp is not configured yet — report was prepared but not sent.");
+      const sent = data.sent as { ok?: boolean; skipped?: boolean; status?: string } | undefined;
+      if (sent?.skipped || sent?.status === "failed") {
+        throw new Error(
+          (sent as { failReason?: string })?.failReason ||
+            "WhatsApp is not configured yet — report was prepared but not sent.",
+        );
       }
       if (sent && sent.ok === false) {
         throw new Error("WhatsApp could not send the report. Check the number and Twilio sandbox limits.");
@@ -414,6 +585,76 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       return { preview: data.preview || "", sent: data.sent };
     });
   }, [run, stockAction]);
+
+  const updateNotificationPrefs = useCallback(
+    async (prefs: Record<string, unknown>) => {
+      await run(async () => {
+        const data = await stockAction({ action: "updateNotificationPrefs", prefs });
+        setState(toState(data.business));
+      });
+    },
+    [run, stockAction],
+  );
+
+  const requestChangeMyNumber = useCallback(
+    async (newPhone: string) => {
+      return run(async () => {
+        const data = await stockAction({ action: "requestChangeMyNumber", newPhone });
+        return {
+          sent: Boolean(data.sent),
+          newPhone: String(data.newPhone || newPhone),
+          devCode: typeof data.devCode === "string" ? data.devCode : undefined,
+        };
+      });
+    },
+    [run, stockAction],
+  );
+
+  const confirmChangeMyNumber = useCallback(
+    async (newPhone: string, code: string) => {
+      await run(async () => {
+        await stockAction({ action: "confirmChangeMyNumber", newPhone, code });
+      });
+    },
+    [run, stockAction],
+  );
+
+  const addPlace = useCallback(
+    async (kind: "warehouse" | "shop" | "online", name: string) => {
+      await run(async () => {
+        const data = await stockAction({ action: "addPlace", kind, name });
+        setState(toState(data.business));
+      });
+    },
+    [run, stockAction],
+  );
+
+  const renamePlace = useCallback(
+    async (placeId: string, name: string) => {
+      await run(async () => {
+        const data = await stockAction({ action: "renamePlace", placeId, name });
+        setState(toState(data.business));
+      });
+    },
+    [run, stockAction],
+  );
+
+  const removePlace = useCallback(
+    async (placeId: string) => {
+      await run(async () => {
+        const data = await stockAction({ action: "removePlace", placeId });
+        setState(toState(data.business));
+      });
+    },
+    [run, stockAction],
+  );
+
+  const addWarehouse = useCallback(async (name: string) => addPlace("warehouse", name), [addPlace]);
+  const renameWarehouse = useCallback(
+    async (placeId: string, name: string) => renamePlace(placeId, name),
+    [renamePlace],
+  );
+  const removeWarehouse = useCallback(async (placeId: string) => removePlace(placeId), [removePlace]);
 
   const sendMonthlyChart = useCallback(
     async (productId?: string) => {
@@ -476,6 +717,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setAuthenticated(false);
       setNeedsSetup(false);
       setPhone(null);
+      setEmail(null);
       setRole(null);
       setHomePath("/");
       setState(defaultState);
@@ -490,6 +732,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       authenticated,
       needsSetup,
       phone,
+      email,
       role,
       homePath,
       state,
@@ -502,6 +745,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       startFresh,
       startSample,
       addProduct,
+      addStock,
+      moveStock,
+      correctCount,
+      editProduct,
+      setPriceCompareUnit,
+      archiveProduct,
+      restoreProduct,
       addStaff,
       addOwner: addOwnerMember,
       removeOwner: removeOwnerMember,
@@ -511,6 +761,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       sendDailyReport,
       sendMonthlyChart,
       sendWeeklyChart: sendMonthlyChart,
+      updateNotificationPrefs,
+      requestChangeMyNumber,
+      confirmChangeMyNumber,
+      addPlace,
+      renamePlace,
+      removePlace,
+      addWarehouse,
+      renameWarehouse,
+      removeWarehouse,
       connectShopify,
       syncShopify,
       disconnectShopify,
@@ -524,6 +783,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       authenticated,
       needsSetup,
       phone,
+      email,
       role,
       homePath,
       state,
@@ -536,6 +796,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       startFresh,
       startSample,
       addProduct,
+      addStock,
+      moveStock,
+      correctCount,
+      editProduct,
+      setPriceCompareUnit,
+      archiveProduct,
+      restoreProduct,
       addStaff,
       addOwnerMember,
       removeOwnerMember,
@@ -544,6 +811,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       runBackup,
       sendDailyReport,
       sendMonthlyChart,
+      updateNotificationPrefs,
+      requestChangeMyNumber,
+      confirmChangeMyNumber,
+      addPlace,
+      renamePlace,
+      removePlace,
+      addWarehouse,
+      renameWarehouse,
+      removeWarehouse,
       connectShopify,
       syncShopify,
       disconnectShopify,
