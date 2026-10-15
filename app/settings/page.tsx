@@ -87,6 +87,7 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [backupFlash, setBackupFlash] = useState(false);
   const [reportPreview, setReportPreview] = useState("");
+  const [reportDeliveryOpen, setReportDeliveryOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [notice, setNotice] = useState("");
   const [shopDomain, setShopDomain] = useState("");
@@ -683,21 +684,70 @@ export default function SettingsPage() {
             }}
           />
 
-          <Button
-            disabled={busy}
-            onClick={async () => {
-              try {
-                const result = await sendDailyReport();
-                setReportPreview(result.preview);
-                setNotice(t(lang, "reportSent"));
-                void loadSystemStatus();
-              } catch {
-                /* error shown below */
-              }
-            }}
-          >
-            {t(lang, "sendDailyReportTest")}
-          </Button>
+          <div>
+            <Button
+              disabled={busy}
+              onClick={() => {
+                setReportDeliveryOpen((open) => !open);
+              }}
+            >
+              {t(lang, "sendDailyReportTest")}
+            </Button>
+            {reportDeliveryOpen ? (
+              <div
+                className="mt-3 rounded-xl border border-navy/10 bg-cream/80 p-3"
+                role="group"
+                aria-label={t(lang, "reportDeliverChoose")}
+              >
+                <p className="text-sm font-medium text-navy/70">{t(lang, "reportDeliverChoose")}</p>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    full
+                    disabled={busy}
+                    onClick={async () => {
+                      try {
+                        const result = await sendDailyReport("whatsapp");
+                        setReportPreview(result.preview);
+                        setNotice(t(lang, "reportSent"));
+                        setReportDeliveryOpen(false);
+                        void loadSystemStatus();
+                      } catch {
+                        /* error shown below */
+                      }
+                    }}
+                  >
+                    {t(lang, "reportViaWhatsApp")}
+                  </Button>
+                  <Button
+                    full
+                    variant="secondary"
+                    disabled={busy}
+                    onClick={async () => {
+                      try {
+                        const result = await sendDailyReport("email");
+                        setReportPreview(result.preview);
+                        setNotice(t(lang, "reportEmailSent"));
+                        setReportDeliveryOpen(false);
+                        void loadSystemStatus();
+                      } catch {
+                        /* error shown below */
+                      }
+                    }}
+                  >
+                    {t(lang, "reportViaEmail")}
+                  </Button>
+                </div>
+                <button
+                  type="button"
+                  className="mt-3 text-sm font-semibold text-navy/55 underline-offset-4 hover:underline"
+                  disabled={busy}
+                  onClick={() => setReportDeliveryOpen(false)}
+                >
+                  {t(lang, "reportCancelChoose")}
+                </button>
+              </div>
+            ) : null}
+          </div>
           <Button
             variant="secondary"
             disabled={busy}

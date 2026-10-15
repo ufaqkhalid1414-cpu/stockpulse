@@ -3,6 +3,22 @@
  * `lib/db/queries.ts`. No Firestore, no I/O.
  */
 
+/**
+ * New-product purchase price (always per-piece after carton conversion).
+ * Rejects missing, non-finite, zero, and negative values — never coerce to 0.
+ */
+export function isValidPurchasePrice(price: number): boolean {
+  return Number.isFinite(price) && price > 0;
+}
+
+/** Parse raw API/body input into a valid purchase price, or null if unacceptable. */
+export function parseRequiredPurchasePrice(raw: unknown): number | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw === "string" && raw.trim() === "") return null;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  return isValidPurchasePrice(n) ? n : null;
+}
+
 /** Percent change from `previous` to `next`. Positive = price went up. */
 export function purchasePriceChangePct(previous: number, next: number): number {
   if (!Number.isFinite(previous) || !Number.isFinite(next) || previous === 0) return 0;

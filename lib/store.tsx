@@ -97,7 +97,7 @@ type StoreValue = {
   removeOwner: (ownerId: string) => Promise<void>;
   recordPurchasePrice: (productId: string, price: number) => Promise<{ alert: AlertItem | null }>;
   runBackup: () => Promise<void>;
-  sendDailyReport: () => Promise<{ preview: string; sent: unknown }>;
+  sendDailyReport: (channel: "whatsapp" | "email") => Promise<{ preview: string; sent: unknown }>;
   sendMonthlyChart: (productId?: string) => Promise<void>;
   /** @deprecated use sendMonthlyChart */
   sendWeeklyChart: (productId?: string) => Promise<void>;
@@ -569,22 +569,35 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     });
   }, [run, stockAction]);
 
-  const sendDailyReport = useCallback(async () => {
-    return run(async () => {
-      const data = await stockAction({ action: "sendDailyReport" });
-      const sent = data.sent as { ok?: boolean; skipped?: boolean; status?: string } | undefined;
-      if (sent?.skipped || sent?.status === "failed") {
-        throw new Error(
-          (sent as { failReason?: string })?.failReason ||
-            "WhatsApp is not configured yet — report was prepared but not sent.",
-        );
-      }
-      if (sent && sent.ok === false) {
-        throw new Error("WhatsApp could not send the report. Check the number and Twilio sandbox limits.");
-      }
-      return { preview: data.preview || "", sent: data.sent };
-    });
-  }, [run, stockAction]);
+  const sendDailyReport = useCallback(
+    async (channel: "whatsapp" | "email") => {
+      return run(async () => {
+        const data = await stockAction({ action: "sendDailyReport", channel });
+        const sent = data.sent as { ok?: boolean; skipped?: boolean; status?: string } | undefined;
+        if (channel === "email") {
+          if (sent && sent.ok === false) {
+            throw new Error(
+              (sent as { failReason?: string })?.failReason ||
+                data.error ||
+                "Email could not send the report.",
+            );
+          }
+          return { preview: data.preview || "", sent: data.sent };
+        }
+        if (sent?.skipped || sent?.status === "failed") {
+          throw new Error(
+            (sent as { failReason?: string })?.failReason ||
+              "WhatsApp is not configured yet — report was prepared but not sent.",
+          );
+        }
+        if (sent && sent.ok === false) {
+          throw new Error("WhatsApp could not send the report. Check the number and Twilio sandbox limits.");
+        }
+        return { preview: data.preview || "", sent: data.sent };
+      });
+    },
+    [run, stockAction],
+  );
 
   const updateNotificationPrefs = useCallback(
     async (prefs: Record<string, unknown>) => {

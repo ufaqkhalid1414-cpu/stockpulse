@@ -103,7 +103,7 @@ export default function AddProductPage() {
     if (!Number.isFinite(qty) || qty < 0 || quantity.trim() === "") next.quantity = t(lang, "qtyInvalid");
 
     const amount = Number(price);
-    if (!Number.isFinite(amount) || amount <= 0) next.price = t(lang, "priceInvalid");
+    if (price.trim() === "" || !Number.isFinite(amount) || amount <= 0) next.price = t(lang, "priceInvalid");
 
     let purchasePrice = amount;
     let savedPpc: number | null = null;
@@ -425,8 +425,9 @@ export default function AddProductPage() {
             id="price"
             label={priceUnit === "carton" ? t(lang, "pricePerCarton") : t(lang, "pricePerPiece")}
             error={errors.price}
+            required
           >
-            <VoiceInput id="price" lang={lang} inputMode="decimal" value={price} onChange={setPrice} placeholder="0" />
+            <VoiceInput id="price" lang={lang} inputMode="decimal" value={price} onChange={setPrice} />
           </Field>
 
           {priceUnit === "carton" ? (

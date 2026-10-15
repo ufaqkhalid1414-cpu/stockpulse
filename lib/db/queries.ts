@@ -19,6 +19,7 @@ import { ensureDbReady, firestoreDb, getBackupDir, newId, nowIso } from "@/lib/d
 import { listActivity } from "@/lib/db/activity";
 import { phoneDocId } from "@/lib/firebase/admin";
 import { normalizePhone } from "@/lib/phone";
+import { isValidPurchasePrice } from "@/lib/price-math";
 import { logError, logInfo, logWarn } from "@/lib/logger";
 import { parseStaffPermission, roleFromPermission } from "@/lib/staff-permission";
 import {
@@ -713,6 +714,9 @@ export async function addProduct(
     piecesPerCarton?: number | null;
   },
 ): Promise<AddProductResult> {
+  if (!isValidPurchasePrice(input.purchasePrice)) {
+    throw new Error("Enter a price above zero.");
+  }
   await clearSampleInventory(businessId);
   const id = newId();
   const created = nowIso();

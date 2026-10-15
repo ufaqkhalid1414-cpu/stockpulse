@@ -165,18 +165,21 @@ export function Field({
   label,
   hint,
   error,
+  required,
   children,
 }: {
   id: string;
   label: string;
   hint?: string;
   error?: string;
+  required?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div>
       <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-navy/80">
         {label}
+        {required ? <span className="text-clay"> *</span> : null}
       </label>
       {children}
       {hint && !error ? <p className="mt-1.5 text-sm text-navy/55">{hint}</p> : null}

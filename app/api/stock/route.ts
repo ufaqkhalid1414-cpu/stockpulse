@@ -21,6 +21,7 @@ import { sanitizeBusinessState } from "@/lib/permissions";
 import { actorFromAccess, recordActivity, type ActivityInput } from "@/lib/db/activity";
 import { revokeSessionsForPhone } from "@/lib/session";
 import { shouldAlertOwnersForRecount } from "@/lib/alert-throttle";
+import { parseRequiredPurchasePrice } from "@/lib/price-math";
 import { displayQty } from "@/lib/stock-math";
 import {
   addOwner,
@@ -196,6 +197,10 @@ export async function POST(request: Request) {
   try {
     if (action === "addProduct") {
       if (!canAddProduct(ctx.role)) return forbidden("View-only staff cannot add products");
+      const purchasePrice = parseRequiredPurchasePrice(body.purchasePrice);
+      if (purchasePrice === null) {
+        return jsonNoStore({ error: "Enter a price above zero." }, { status: 400 });
+      }
       const rawThreshold = body.restockThreshold;
       const parsedThreshold =
         rawThreshold === undefined || rawThreshold === null || String(rawThreshold).trim() === ""
@@ -212,7 +217,7 @@ export async function POST(request: Request) {
         variant: String(body.variant || ""),
         location: body.location as Location,
         quantity: Number(body.quantity),
-        purchasePrice: Number(body.purchasePrice),
+        purchasePrice,
         photo: body.photo ? String(body.photo) : undefined,
         restockThreshold: parsedThreshold,
         piecesPerCarton: parsedPpc,
@@ -720,17 +725,74 @@ export async function POST(request: Request) {
 
     if (action === "sendDailyReport") {
       if (!canSendReports(ctx.role)) return forbidden();
+      const { normalizeReportChannel, emailDeliveryConfigured, resolveReportEmailRecipient } =
+        await import("@/lib/report-delivery");
+      const channel = normalizeReportChannel(body.channel);
+      if (!channel) {
+        return jsonNoStore(
+          { error: "Choose WhatsApp or Email to send today's report." },
+          { status: 400 },
+        );
+      }
       const state = (await buildBusinessState(ctx.business.id))!;
       const { buildDailyReportMessage } = await import("@/lib/daily-report");
-      const { recordAndSendWhatsApp } = await import("@/lib/outbound");
-      const { normalizePhone } = await import("@/lib/phone");
       const preview = buildDailyReportMessage({
         businessName: state.businessName,
         language: state.language,
         products: state.products,
       });
 
-      // Manual test send — only the requesting owner (never staff)
+      if (channel === "email") {
+        const toEmail = resolveReportEmailRecipient(ctx.session.email);
+        if (!toEmail) {
+          return jsonNoStore(
+            {
+              error:
+                "No email on your login. Sign in with email (or link an email) to receive today's report by email.",
+            },
+            { status: 400 },
+          );
+        }
+        if (!emailDeliveryConfigured()) {
+          return jsonNoStore(
+            {
+              error:
+                "Email delivery is not configured yet. Add RESEND_API_KEY and REPORT_EMAIL_FROM on the server.",
+            },
+            { status: 503 },
+          );
+        }
+        const { sendPlainEmail } = await import("@/lib/email");
+        const mailed = await sendPlainEmail({
+          to: toEmail,
+          subject: `StockPulse — today's report (${state.businessName})`,
+          text: preview,
+        });
+        if (!mailed.ok) {
+          return jsonNoStore(
+            {
+              error: mailed.error,
+              sent: { ok: false, skipped: mailed.skipped === true, failReason: mailed.error },
+              preview,
+              channel: "email",
+              role: ctx.role,
+            },
+            { status: mailed.skipped ? 503 : 502 },
+          );
+        }
+        return jsonNoStore({
+          sent: { ok: true, id: mailed.id },
+          sentTo: [toEmail],
+          preview,
+          channel: "email",
+          role: ctx.role,
+          testLabel: "Send me today's report now (test)",
+        });
+      }
+
+      // WhatsApp — existing manual test send (only the requesting owner)
+      const { recordAndSendWhatsApp } = await import("@/lib/outbound");
+      const { normalizePhone } = await import("@/lib/phone");
       const owners = await getOwners(ctx.business.id);
       const mine = owners.find((o) => normalizePhone(o.phone) === normalizePhone(ctx.session.phone));
       const to = mine ? normalizePhone(mine.phone) : normalizePhone(ctx.session.phone);
@@ -747,6 +809,7 @@ export async function POST(request: Request) {
         sent,
         sentTo: [to],
         preview,
+        channel: "whatsapp",
         twilioConfigured: twilioConfigured(),
         role: ctx.role,
         testLabel: "Send me today's report now (test)",
