@@ -123,7 +123,11 @@ export function AuthEntry() {
         needsSetup?: boolean;
         homePath?: string;
       };
-      if (!res.ok) throw new Error(data.error || "Request failed");
+      if (!res.ok) {
+        const msg = data.error || "Request failed";
+        // Invite-only often looks like “email doesn’t work” when no email account exists yet.
+        throw new Error(msg);
+      }
       if (action === "forgot") {
         if (data.resetToken) {
           setResetToken(data.resetToken);
@@ -326,7 +330,8 @@ export function AuthEntry() {
     if (view === "email-login") {
       return (
         <Shell title={t(lang, "loginEmailTitle")} body={t(lang, "loginEmailBody")} backToChooser>
-          <div className="card mt-8 space-y-4 p-5 sm:p-6">
+          <p className="mt-4 text-sm leading-relaxed text-navy/60">{t(lang, "loginEmailInviteHint")}</p>
+          <div className="card mt-6 space-y-4 p-5 sm:p-6">
             <Field id="email-login" label={t(lang, "loginEmail")}>
               <input
                 id="email-login"

@@ -497,7 +497,7 @@ const en = {
   priceSaved: "Price updated",
   twilioMissing: "Twilio is not configured yet — message was prepared but not sent.",
   voiceSpeak: "Speak to fill this field",
-  voiceListening: "Listening… tap to stop",
+  voiceListening: "Listening… keep talking, tap the mic when finished",
   voiceUnsupported: "Voice input is not supported in this browser",
   voiceNeedsSecure: "Voice needs HTTPS or localhost. Open the app in Chrome on localhost.",
   voicePermissionDenied: "Microphone permission blocked. Allow the mic for this site in browser settings.",
@@ -547,6 +547,8 @@ const en = {
     "On this laptop: open this page in Chrome or Edge, then click the install icon in the address bar (⊕ or computer), or open the browser menu (⋮) → Install StockPulse / Install this site as an app. That puts an icon on your desktop.",
   inviteOnlyNotice:
     "StockPulse is invite-only right now. Ask an owner to add your WhatsApp number, then log in.",
+  loginEmailInviteHint:
+    "Email login only works if this email was already added to the business. New email sign-up is closed. Use WhatsApp if you usually sign in that way.",
   loginGoogleInviteOnly: "Google sign-in is only for people already on a business.",
   loginWhatsapp: "Your WhatsApp number",
   loginWhatsappHint: "Include the country code. Example: +92 300 1234567",

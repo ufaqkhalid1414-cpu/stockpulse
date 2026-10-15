@@ -113,11 +113,15 @@ export function VoiceInput({
   const [supported, setSupported] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  /** User wants the mic on — stay listening until they tap stop. */
+  const wantListeningRef = useRef(false);
   const baseValueRef = useRef(value);
+  const sessionFinalRef = useRef("");
   const onChangeRef = useRef(onChange);
   const valueRef = useRef(value);
   const langRef = useRef(lang);
   const inputModeRef = useRef(inputMode);
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   onChangeRef.current = onChange;
   valueRef.current = value;
@@ -135,25 +139,47 @@ export function VoiceInput({
 
   useEffect(() => {
     return () => {
+      wantListeningRef.current = false;
+      if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
       recognitionRef.current?.abort();
       recognitionRef.current = null;
     };
   }, []);
 
+  const applyTranscript = useCallback((sessionText: string) => {
+    const spoken = normalizeSpokenValue(sessionText, inputModeRef.current);
+    if (!spoken) return;
+    if (inputModeRef.current === "decimal" || inputModeRef.current === "numeric") {
+      onChangeRef.current(spoken);
+      return;
+    }
+    const base = baseValueRef.current.trim();
+    onChangeRef.current(base ? `${base} ${spoken}` : spoken);
+  }, []);
+
   const stop = useCallback(() => {
+    wantListeningRef.current = false;
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
     recognitionRef.current?.stop();
     setListening(false);
   }, []);
 
-  const start = useCallback(() => {
+  const startRecognition = useCallback(() => {
     const Ctor = getSpeechRecognition();
-    if (!Ctor || disabled) return;
+    if (!Ctor || disabled || !wantListeningRef.current) return;
     if (typeof window !== "undefined" && !window.isSecureContext) {
       setStatus(t(langRef.current, "voiceNeedsSecure"));
+      wantListeningRef.current = false;
+      setListening(false);
       return;
     }
     if (isEmbeddedBrowser()) {
       setStatus(t(langRef.current, "voiceUseChrome"));
+      wantListeningRef.current = false;
+      setListening(false);
       return;
     }
 
@@ -161,44 +187,46 @@ export function VoiceInput({
     recognitionRef.current?.abort();
 
     const recognition = new Ctor();
-    // Single utterance — matches the earlier working behavior; aggressive restart
-    // loops often trip Chrome's speech service into a fake "network" error.
     recognition.lang = SPEECH_LOCALE[langRef.current] || "en-US";
-    recognition.continuous = false;
+    // Keep listening across pauses until the user taps the mic again.
+    recognition.continuous = true;
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
     baseValueRef.current = valueRef.current;
+    sessionFinalRef.current = "";
     recognitionRef.current = recognition;
 
     recognition.onresult = (event) => {
-      let transcript = "";
-      for (let i = 0; i < event.results.length; i += 1) {
-        transcript += event.results[i][0]?.transcript ?? "";
+      let interim = "";
+      let finals = sessionFinalRef.current;
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const piece = event.results[i][0]?.transcript ?? "";
+        if (event.results[i].isFinal) {
+          finals = `${finals} ${piece}`.replace(/\s+/g, " ").trim();
+          sessionFinalRef.current = finals;
+        } else {
+          interim += piece;
+        }
       }
-      const spoken = normalizeSpokenValue(transcript, inputModeRef.current);
-      if (!spoken) return;
-      if (inputModeRef.current === "decimal" || inputModeRef.current === "numeric") {
-        onChangeRef.current(spoken);
-        return;
-      }
-      const base = baseValueRef.current.trim();
-      onChangeRef.current(base ? `${base} ${spoken}` : spoken);
+      const combined = `${finals} ${interim}`.replace(/\s+/g, " ").trim();
+      applyTranscript(combined);
     };
 
     recognition.onerror = (event) => {
       const code = event.error || "";
-      setListening(false);
       if (code === "aborted") return;
       if (code === "no-speech") {
+        // Stay armed — continuous sessions often fire no-speech between phrases.
         setStatus(t(langRef.current, "voiceNoSpeech"));
         return;
       }
       if (code === "not-allowed" || code === "service-not-allowed") {
+        wantListeningRef.current = false;
+        setListening(false);
         setStatus(t(langRef.current, "voicePermissionDenied"));
         return;
       }
       if (code === "language-not-supported") {
-        // One retry in English on the next tap would need user action; try once now.
         try {
           recognition.lang = "en-US";
           recognition.start();
@@ -206,35 +234,64 @@ export function VoiceInput({
           setStatus(t(langRef.current, "voiceEnglishFallback"));
           return;
         } catch {
+          wantListeningRef.current = false;
+          setListening(false);
           setStatus(t(langRef.current, "voiceFailed"));
           return;
         }
       }
       if (code === "network") {
-        // Not your Wi‑Fi — Chrome could not use Google's speech backend
-        // (common in Cursor preview / blocked speech / non‑Chrome Chromium).
+        wantListeningRef.current = false;
+        setListening(false);
         setStatus(t(langRef.current, "voiceNetwork"));
         return;
       }
+      // Other errors: keep wanting listen; onend will try restart.
       setStatus(t(langRef.current, "voiceFailed"));
     };
 
     recognition.onend = () => {
-      setListening(false);
       recognitionRef.current = null;
+      if (!wantListeningRef.current) {
+        setListening(false);
+        return;
+      }
+      // Browser ended the session (common after a pause) — restart until user stops.
+      baseValueRef.current = valueRef.current;
+      sessionFinalRef.current = "";
+      if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = setTimeout(() => {
+        restartTimerRef.current = null;
+        if (!wantListeningRef.current) return;
+        try {
+          startRecognition();
+        } catch {
+          wantListeningRef.current = false;
+          setListening(false);
+          setStatus(t(langRef.current, "voiceFailed"));
+        }
+      }, 250);
     };
 
     try {
       recognition.start();
       setListening(true);
     } catch {
+      // Already started — ignore; otherwise surface failure.
+      if (!wantListeningRef.current) return;
       setListening(false);
+      wantListeningRef.current = false;
       setStatus(t(langRef.current, "voiceFailed"));
     }
-  }, [disabled]);
+  }, [disabled, applyTranscript]);
+
+  const start = useCallback(() => {
+    wantListeningRef.current = true;
+    startRecognition();
+  }, [startRecognition]);
 
   const toggle = () => {
-    if (listening) stop();
+    if (listening || wantListeningRef.current) stop();
     else start();
   };
 
