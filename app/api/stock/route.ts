@@ -377,7 +377,7 @@ export async function POST(request: Request) {
         quantity: Number(body.quantity),
         idempotencyKey,
       });
-      const { product, replayed, audit } = outcome;
+      const { product, replayed, alert, audit } = outcome;
       if (!replayed) {
         await safeRecordActivity(ctx.business.id, {
           category: "stock",
@@ -407,9 +407,29 @@ export async function POST(request: Request) {
           });
         }
       }
+      let whatsappError: string | null = null;
+      if (!replayed && alert) {
+        try {
+          const { sendOwnerAlert } = await import("@/lib/owner-alerts");
+          const result = await sendOwnerAlert({
+            businessId: ctx.business.id,
+            kind: "low_stock_alert",
+            eventKey: `low_stock_${audit.productId}_${audit.from}_${audit.newFromQty}`,
+            title: alert.title,
+            body: alert.body,
+          });
+          if (result.sent === 0 && !twilioConfigured()) {
+            whatsappError = "Move saved. WhatsApp low-stock alert was not sent — Twilio is not configured.";
+          }
+        } catch (err) {
+          whatsappError =
+            err instanceof Error ? err.message : "Move saved, but WhatsApp low-stock alert failed to send.";
+        }
+      }
       await persistDb();
       return jsonNoStore({
         product,
+        alert,
         replayed,
         neededRecount: audit.neededRecount,
         appHad: audit.previousFromQty,
@@ -419,6 +439,8 @@ export async function POST(request: Request) {
           : null,
         business: await stateFor(ctx.business.id, ctx.role),
         role: ctx.role,
+        twilioConfigured: twilioConfigured(),
+        whatsappError,
       });
     }
 
@@ -455,7 +477,7 @@ export async function POST(request: Request) {
           const result = await sendOwnerAlert({
             businessId: ctx.business.id,
             kind: "low_stock_alert",
-            eventKey: `low_stock_${audit.productId}_${audit.newTotal}`,
+            eventKey: `low_stock_${audit.productId}_${audit.location}_${audit.newLocationQty}`,
             title: alert.title,
             body: alert.body,
           });
@@ -611,7 +633,7 @@ export async function POST(request: Request) {
           const result = await sendOwnerAlert({
             businessId: ctx.business.id,
             kind: "low_stock_alert",
-            eventKey: `low_stock_${audit.productId}_${audit.newTotal}`,
+            eventKey: `low_stock_${audit.productId}_${audit.location}_${audit.newLocationQty}`,
             title: alert.title,
             body: alert.body,
           });

@@ -215,16 +215,33 @@ export function ListScreen({
       </div>
 
       <div className="mt-6 space-y-3">
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-navy/80">{t(lang, "searchProducts")}</span>
-          <VoiceInput
-            id="product-search"
-            lang={lang}
-            value={query}
-            onChange={onSearchChange}
-            placeholder={t(lang, "searchPlaceholder")}
-          />
-        </label>
+        <div>
+          <label className="block" htmlFor="product-search">
+            <span className="mb-1.5 block text-sm font-medium text-navy/80">{t(lang, "searchProducts")}</span>
+          </label>
+          <div className="flex items-stretch gap-2">
+            <div className="min-w-0 flex-1">
+              <VoiceInput
+                id="product-search"
+                lang={lang}
+                value={query}
+                onChange={onSearchChange}
+                placeholder={t(lang, "searchPlaceholder")}
+                autoComplete="off"
+              />
+            </div>
+            {query.trim() !== "" ? (
+              <button
+                type="button"
+                className="depth lift shrink-0 rounded-full border border-navy/15 bg-white px-4 text-sm font-semibold text-navy/70"
+                onClick={() => onSearchChange("")}
+                aria-label={t(lang, "searchClear")}
+              >
+                {t(lang, "searchClear")}
+              </button>
+            ) : null}
+          </div>
+        </div>
 
         {categories.length > 0 ? (
           <div className="flex flex-wrap gap-2" role="group" aria-label={t(lang, "searchAllCategories")}>
@@ -267,10 +284,29 @@ export function ListScreen({
 
       <ProductRows
         products={visible}
-        emptyTitle={searching ? t(lang, "searchNoResults") : emptyTitle}
-        emptySupport={searching ? t(lang, "searchNoResults") : emptySupport}
+        emptyTitle={
+          products.length === 0
+            ? emptyTitle
+            : searching
+              ? t(lang, "searchNoResults")
+              : emptyTitle
+        }
+        emptySupport={
+          products.length === 0
+            ? emptySupport
+            : searching
+              ? t(lang, "searchNoResults")
+              : emptySupport
+        }
         emptyAction={
-          searching && canAdd ? (
+          products.length === 0 && canAdd ? (
+            <Link
+              href="/add-product"
+              className="depth lift inline-flex min-h-[48px] items-center rounded-full bg-navy px-5 text-sm font-semibold text-cream"
+            >
+              {t(lang, "addProduct")}
+            </Link>
+          ) : query.trim() !== "" && canAdd ? (
             <Link
               href={`/add-product?name=${encodeURIComponent(query.trim())}`}
               className="depth lift inline-flex min-h-[48px] items-center rounded-full bg-navy px-5 text-sm font-semibold text-cream"

@@ -1,5 +1,6 @@
+import { productHasLowPlace, lowStockProductsPerPlace } from "@/lib/low-stock";
 import { displayQty, displayTotalAcrossLocations, productNeedsRecount } from "@/lib/stock-math";
-import type { Product } from "@/lib/types";
+import type { Product, StockPlace } from "@/lib/types";
 
 /** Displayed total pieces — never negative (Prompt 16 Part A). */
 export function totalQty(product: Product) {
@@ -15,8 +16,9 @@ export function stockValue(products: Product[]) {
   }, 0);
 }
 
-export function isLow(product: Product) {
-  return totalQty(product) <= product.restockThreshold;
+/** Prompt 20: low when at least one place that has held the product is at/below the number. */
+export function isLow(product: Product, places?: StockPlace[]) {
+  return productHasLowPlace(product, places);
 }
 
 export function priceDelta(product: Product) {
@@ -53,10 +55,8 @@ export function biggestMoves(products: Product[], limit = 5) {
     .slice(0, limit);
 }
 
-export function lowStockProducts(products: Product[]) {
-  return products
-    .filter(isLow)
-    .sort((a, b) => totalQty(a) / a.restockThreshold - totalQty(b) / b.restockThreshold);
+export function lowStockProducts(products: Product[], places?: StockPlace[]) {
+  return lowStockProductsPerPlace(products, places);
 }
 
 export function recountProducts(products: Product[]) {

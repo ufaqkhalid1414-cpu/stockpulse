@@ -24,6 +24,7 @@ export function AuthEntry() {
     email: sessionEmail,
     startFresh,
     startSample,
+    logout,
     requestOtp,
     verifyOtp,
     busy,
@@ -31,6 +32,7 @@ export function AuthEntry() {
     refresh,
   } = useStock();
   const lang = state.language;
+  const signupOpen = process.env.NEXT_PUBLIC_PUBLIC_SIGNUP === "1";
 
   const [view, setView] = useState<AuthView>("chooser");
   const [phone, setPhone] = useState("");
@@ -52,6 +54,8 @@ export function AuthEntry() {
     const err = searchParams.get("error");
     if (err === "google_not_configured") {
       setLocalError(t(lang, "loginGoogleNotConfigured"));
+    } else if (err === "invite_only") {
+      setLocalError(t(lang, "loginGoogleInviteOnly"));
     } else if (err === "google_denied" || err === "google_failed") {
       setLocalError(t(lang, "loginGoogleFailed"));
     }
@@ -233,14 +237,8 @@ export function AuthEntry() {
               {t(lang, "loginWithEmail")}
             </Button>
           </div>
-          <div className="mt-8 flex flex-col gap-3 text-center text-sm">
-            <button
-              type="button"
-              className="font-semibold text-navy underline-offset-4 hover:underline"
-              onClick={() => setView("signup")}
-            >
-              {t(lang, "loginCreateAccount")}
-            </button>
+          <p className="mt-6 text-center text-sm leading-relaxed text-navy/60">{t(lang, "inviteOnlyNotice")}</p>
+          <div className="mt-4 flex flex-col gap-3 text-center text-sm">
             <button
               type="button"
               className="text-navy/60 underline-offset-4 hover:underline"
@@ -367,6 +365,17 @@ export function AuthEntry() {
     }
 
     if (view === "signup") {
+      if (!signupOpen) {
+        return (
+          <Shell title={t(lang, "loginTitle")} body={t(lang, "inviteOnlyNotice")} backToChooser>
+            <div className="mt-8">
+              <Button full onClick={() => setView("chooser")}>
+                {t(lang, "loginBackMethods")}
+              </Button>
+            </div>
+          </Shell>
+        );
+      }
       return (
         <Shell title={t(lang, "loginSignupTitle")} body={t(lang, "loginSignupBody")} backToChooser>
           <div className="card mt-8 space-y-4 p-5 sm:p-6">
@@ -456,6 +465,33 @@ export function AuthEntry() {
 
   if (needsSetup) {
     const identity = sessionPhone || sessionEmail;
+    if (!signupOpen) {
+      return (
+        <div className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center px-4 py-10 sm:px-6">
+          <div className="mb-8 flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-navy/55">StockPulse</p>
+              <span className="mt-3 block h-0.5 w-10 rounded-full bg-gold" />
+            </div>
+            <LanguageMenu align="end" />
+          </div>
+          <h1 className="text-3xl font-bold leading-tight tracking-tight text-navy sm:text-4xl">
+            {t(lang, "loginTitle")}
+          </h1>
+          <p className="mt-3 text-base leading-relaxed text-navy/70">{t(lang, "inviteOnlyNotice")}</p>
+          {identity ? (
+            <p className="mt-2 text-sm text-navy/60">
+              {t(lang, "loggedInAs")} <span dir="ltr" className="font-semibold text-navy">{identity}</span>
+            </p>
+          ) : null}
+          <div className="mt-8">
+            <Button full disabled={busy} onClick={() => logout()}>
+              {t(lang, "logOut")}
+            </Button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center px-4 py-10 sm:px-6">
         <div className="mb-8 flex items-start justify-between gap-4">

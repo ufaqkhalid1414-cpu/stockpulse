@@ -127,7 +127,11 @@ describe("Prompt 18 — schedules, prefs, delivery, report shape", () => {
   test("fine day uses the calm action line", () => {
     const ok = product({
       warehouseQty: 40,
+      shopQty: 40,
+      onlineQty: 40,
+      stockByPlace: { warehouse: 40, shop: 40, online: 40 },
       restockThreshold: 5,
+      everHeldByPlace: { warehouse: true, shop: true, online: true },
       priceEntries: [
         { id: "e1", recordedAt: "2026-01-01", pricePerPiece: 100, piecesPerCarton: null },
         { id: "e2", recordedAt: "2026-02-01", pricePerPiece: 100, piecesPerCarton: null },
@@ -163,5 +167,26 @@ describe("Prompt 18 — schedules, prefs, delivery, report shape", () => {
     const key = "event__price_p1_110";
     assert.equal(store.claim(key), true);
     assert.equal(store.claim(key), false);
+  });
+
+  test("Hobby daily cron at 18:00 UTC is past default 20:00 Asia/Karachi", () => {
+    // vercel.json scheduled-messages: 0 18 * * *
+    const cronTick = new Date("2026-10-12T18:00:00.000Z"); // 23:00 Karachi
+    assert.equal(localDateKey(cronTick, "Asia/Karachi"), "2026-10-12");
+    assert.equal(isAtOrPastLocalTime(cronTick, "Asia/Karachi", "20:00"), true);
+    assert.equal(isLastLocalDayOfMonth(new Date("2026-10-31T18:00:00.000Z"), "Asia/Karachi"), true);
+  });
+
+  test("monthly chart claim is per person+month across two runs", () => {
+    const store = makeClaimStore();
+    const owners = ["+923001", "+923002"];
+    const period = "2026-10";
+    let sent = 0;
+    for (const _run of [1, 2]) {
+      for (const phone of owners) {
+        if (store.claim(`monthly_chart|${phone}|${period}`)) sent += 1;
+      }
+    }
+    assert.equal(sent, 2);
   });
 });

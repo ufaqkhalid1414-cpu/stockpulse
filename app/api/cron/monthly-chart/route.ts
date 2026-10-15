@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { isLastDayOfMonth, sendMonthlyChartsForAllBusinesses } from "@/lib/charts";
 import { ensureDbReady, persistDb } from "@/lib/db";
+import { runScheduledMessages } from "@/lib/scheduled-messages";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,7 +9,6 @@ export const maxDuration = 60;
 function authorized(request: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
-    // Local/dev: allow when CRON_SECRET is unset
     if (process.env.NODE_ENV === "development" || process.env.OTP_DEV_MODE === "1") return true;
     return false;
   }
@@ -25,32 +24,23 @@ function baseUrl(request: Request) {
 }
 
 /**
- * Vercel Cron: runs daily on 28–31; handler only sends on the last calendar day (UTC).
- * Schedule in vercel.json: "5 17 28-31 * *" (monthly at month-end, not weekly).
+ * Month-end backup tick (28–31 at 18:05 UTC ≈ 23:05 Asia/Karachi).
+ * Same handler as daily scheduled-messages: local last-day + 20:00 gate,
+ * per-person sent markers. Safe if both crons fire.
  */
 export async function GET(request: Request) {
   if (!authorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const force = new URL(request.url).searchParams.get("force") === "1";
-  if (!force && !isLastDayOfMonth()) {
-    return NextResponse.json({
-      ok: true,
-      skipped: true,
-      reason: "Not the last calendar day of the month (UTC)",
-      schedule: "month-end only",
-    });
-  }
-
   await ensureDbReady();
-  const results = await sendMonthlyChartsForAllBusinesses(baseUrl(request));
+  const result = await runScheduledMessages(baseUrl(request));
   await persistDb();
 
   return NextResponse.json({
     ok: true,
     skipped: false,
-    schedule: "month-end (Vercel Cron 5 17 28-31 * *, last-day gate)",
-    results,
+    schedule: "month-end backup (Vercel Cron 5 18 28-31 * *); local last-day + markers via runScheduledMessages",
+    result,
   });
 }

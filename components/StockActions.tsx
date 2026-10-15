@@ -11,6 +11,7 @@ import { totalQty } from "@/lib/metrics";
 import { useStock } from "@/lib/store";
 import { qtyAtLocation } from "@/lib/stock-math";
 import type { Location, Product } from "@/lib/types";
+import { defaultNewStockLocation, DEFAULT_NEW_PRICE_UNIT } from "@/lib/add-product-defaults";
 import { locationLabel, piecesPerCartonOf, toPieceQty } from "@/lib/units";
 
 type Mode = "add" | "sale" | "move" | "correct" | "edit" | "archive" | "restore";
@@ -112,7 +113,7 @@ function StockActionSheet({ product, mode, onClose }: { product: Product; mode: 
   const lang = state.language;
   const places = state.places?.length ? state.places : [];
   const placeIds = places.map((p) => p.id);
-  const defaultPlace = placeIds[0] || "warehouse";
+  const defaultPlace = defaultNewStockLocation(places);
   const ppc = piecesPerCartonOf(product);
   const canCarton = Boolean(ppc);
 
@@ -121,10 +122,12 @@ function StockActionSheet({ product, mode, onClose }: { product: Product; mode: 
   const [idempotencyKey] = useState(() => crypto.randomUUID());
 
   const [amount, setAmount] = useState("1");
-  const [unit, setUnit] = useState<"piece" | "carton">("piece");
+  const [unit, setUnit] = useState<"piece" | "carton">(DEFAULT_NEW_PRICE_UNIT);
   const [location, setLocation] = useState<Location>(defaultPlace);
   const [fromLocation, setFromLocation] = useState<Location>(defaultPlace);
-  const [toLocation, setToLocation] = useState<Location>(placeIds.includes("shop") ? "shop" : placeIds[1] || "shop");
+  const [toLocation, setToLocation] = useState<Location>(
+    placeIds.find((id) => id !== defaultPlace) || placeIds[0] || "warehouse",
+  );
   const [newCount, setNewCount] = useState(String(qtyAtLocation(product, location)));
 
   const [name, setName] = useState(product.name);

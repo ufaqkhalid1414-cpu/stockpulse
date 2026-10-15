@@ -7,11 +7,11 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Prompt 18 — frequent scheduler tick (Vercel Cron every 15 minutes).
+ * Prompt 18 — scheduled reports tick.
  *
- * Vercel Hobby: cron minimum interval is once/day on some plans; Pro allows
- * more frequent schedules. We use every-15-min so a late tick still catches anyone
- * whose local send time has passed (claim markers prevent duplicates).
+ * vercel.json: "0 18 * * *" (18:00 UTC ≈ 23:00 Asia/Karachi).
+ * Hobby allows about one cron run per day; Pro can use every-15-min cron for tighter timing.
+ * Late runs are fine — sent markers claim once per owner/period.
  */
 function authorized(request: Request) {
   const secret = process.env.CRON_SECRET;
@@ -41,11 +41,11 @@ export async function GET(request: Request) {
     ok: true,
     scheduler: {
       path: "/api/cron/scheduled-messages",
-      schedule: "*/15 * * * *",
+      schedule: "0 18 * * *",
       note:
-        "Runs every 15 minutes. Timing precision is ±15 minutes. Late runs are fine — sent markers claim once per owner/day.",
+        "Once daily at 18:00 UTC (≈23:00 Asia/Karachi). Finds owners whose local send time has already passed and sends each once. Default daily time is 20:00 local.",
       vercelLimits:
-        "Vercel Cron: Hobby may limit cron frequency (often 1×/day); Pro supports intervals like every 15 minutes. maxDuration 60s on this route.",
+        "Vercel Hobby: cron jobs typically once per day (not every 15 minutes). Pro can use a every-15-minute cron for ±15 minute precision. This route maxDuration is 60s. Late runs are safe because of sent markers.",
     },
     result,
   });

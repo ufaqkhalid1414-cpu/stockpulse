@@ -59,7 +59,64 @@ export async function biggestRecentMove(businessId: string, productIds: string[]
   return best;
 }
 
-/** Month-end job: send monthly comparison charts to every business's owners. */
+/** Send monthly comparison charts to specific owner phones for one business. */
+export async function sendMonthlyChartsForBusiness(
+  businessId: string,
+  businessName: string,
+  appBaseUrl: string,
+  recipientPhones: string[],
+) {
+  const phones = [...new Set(recipientPhones.map((p) => normalizePhone(p)).filter(Boolean))];
+  if (phones.length === 0) {
+    return { businessId, name: businessName, sent: 0, skipped: "no recipients" as string | null };
+  }
+
+  const allProducts = await getProducts(businessId);
+  const products = [];
+  for (const p of allProducts) {
+    const months = await getMonthlyPurchasePrices(p.id, businessId, 2);
+    if (months.length >= 1) products.push(p);
+  }
+
+  if (products.length === 0) {
+    return { businessId, name: businessName, sent: 0, skipped: "no purchase history" as string | null };
+  }
+
+  // Prefer products that have both this month and last month of data; cap to avoid spam
+  const ranked = [];
+  for (const p of products) {
+    ranked.push({ product: p, months: await getMonthlyPurchasePrices(p.id, businessId, 2) });
+  }
+  ranked.sort((a, b) => b.months.length - a.months.length);
+  const top = ranked.slice(0, 5);
+
+  let sent = 0;
+  for (const { product } of top) {
+    const media = await writeMonthlyPriceChart(businessId, product.id, appBaseUrl);
+    if (!media) continue;
+    const url = media.startsWith("http") ? media : `${appBaseUrl.replace(/\/$/, "")}${media}`;
+    const caption = `${businessName} — monthly price comparison\n${product.name}: this month vs previous months`;
+    for (const to of phones) {
+      await recordAndSendWhatsApp({
+        businessId,
+        toPhone: to,
+        kind: "monthly_chart",
+        body: caption,
+        mediaUrl: url,
+      });
+    }
+    sent += 1;
+  }
+
+  return {
+    businessId,
+    name: businessName,
+    sent,
+    skipped: sent === 0 ? ("chart generation failed" as string | null) : null,
+  };
+}
+
+/** Month-end job: send monthly comparison charts to every business's opted-in owners. */
 export async function sendMonthlyChartsForAllBusinesses(appBaseUrl: string) {
   const results: {
     businessId: string;
@@ -70,60 +127,10 @@ export async function sendMonthlyChartsForAllBusinesses(appBaseUrl: string) {
 
   for (const business of await listBusinesses()) {
     const owners = await getOwners(business.id);
-    const recipients = owners.filter((o) =>
-      maySendNotification(normalizeNotificationPrefs(o.notificationPrefs), "monthly_chart"),
-    );
-    if (recipients.length === 0) {
-      results.push({ businessId: business.id, name: business.name, sent: 0, skipped: "no owners opted in" });
-      continue;
-    }
-
-    const allProducts = await getProducts(business.id);
-    const products = [];
-    for (const p of allProducts) {
-      const months = await getMonthlyPurchasePrices(p.id, business.id, 2);
-      if (months.length >= 1) products.push(p);
-    }
-
-    if (products.length === 0) {
-      results.push({ businessId: business.id, name: business.name, sent: 0, skipped: "no purchase history" });
-      continue;
-    }
-
-    // Prefer products that have both this month and last month of data; cap to avoid spam
-    const ranked = [];
-    for (const p of products) {
-      ranked.push({ product: p, months: await getMonthlyPurchasePrices(p.id, business.id, 2) });
-    }
-    ranked.sort((a, b) => b.months.length - a.months.length);
-    const top = ranked.slice(0, 5);
-
-    let sent = 0;
-    for (const { product } of top) {
-      const media = await writeMonthlyPriceChart(business.id, product.id, appBaseUrl);
-      if (!media) continue;
-      const url = media.startsWith("http") ? media : `${appBaseUrl.replace(/\/$/, "")}${media}`;
-      const caption = `${business.name} — monthly price comparison\n${product.name}: this month vs previous months`;
-      for (const owner of recipients) {
-        const to = normalizePhone(owner.phone);
-        if (!to) continue;
-        await recordAndSendWhatsApp({
-          businessId: business.id,
-          toPhone: to,
-          kind: "monthly_chart",
-          body: caption,
-          mediaUrl: url,
-        });
-      }
-      sent += 1;
-    }
-
-    results.push({
-      businessId: business.id,
-      name: business.name,
-      sent,
-      skipped: sent === 0 ? "chart generation failed" : null,
-    });
+    const phones = owners
+      .filter((o) => maySendNotification(normalizeNotificationPrefs(o.notificationPrefs), "monthly_chart"))
+      .map((o) => o.phone);
+    results.push(await sendMonthlyChartsForBusiness(business.id, business.name, appBaseUrl, phones));
   }
 
   return results;

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ensureDbReady, persistDb } from "@/lib/db";
+import { recordActivity } from "@/lib/db/activity";
 import { findBusinessByWhatsapp, findOwnerByPhone, updateOwnerNotificationPrefs } from "@/lib/db/queries";
 import { parseStopStart } from "@/lib/notification-prefs";
 import { answerWhatsAppQuestion } from "@/lib/whatsapp-qa";
@@ -36,6 +37,16 @@ export async function POST(request: Request) {
     if (owner) {
       if (stopStart === "stop") {
         await updateOwnerNotificationPrefs(business.id, owner.id, { pauseAll: true });
+        await recordActivity(business.id, {
+          category: "settings",
+          action: "settings_changed",
+          actor: {
+            phone: owner.phone,
+            name: owner.name,
+            role: owner.access === "co" ? "co_owner" : "equal_owner",
+          },
+          summary: `${owner.name} turned: Paused all (WhatsApp STOP)`,
+        }).catch(() => undefined);
         await persistDb();
         const msg =
           business.language === "ur"
@@ -45,6 +56,16 @@ export async function POST(request: Request) {
         return twiml(msg);
       }
       await updateOwnerNotificationPrefs(business.id, owner.id, { pauseAll: false });
+      await recordActivity(business.id, {
+        category: "settings",
+        action: "settings_changed",
+        actor: {
+          phone: owner.phone,
+          name: owner.name,
+          role: owner.access === "co" ? "co_owner" : "equal_owner",
+        },
+        summary: `${owner.name} turned: Resumed all (WhatsApp START)`,
+      }).catch(() => undefined);
       await persistDb();
       const msg =
         business.language === "ur"

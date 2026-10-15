@@ -49,7 +49,12 @@ export type Product = {
   stockByPlace?: Record<string, number>;
   /** Always stored as price per piece (smallest sellable unit). */
   purchasePrice: number;
+  /** One low-stock number per product; applied to each place separately (Prompt 20). Default 5. */
   restockThreshold: number;
+  /** Places that have ever held this product — never show/alert places that never held it. */
+  everHeldByPlace?: Record<string, boolean>;
+  /** Per-place: true = already alerted, silent until qty rises above the number again. */
+  lowStockAlertedByPlace?: Record<string, boolean>;
   /**
    * Pieces in one carton when the product is bought in bulk.
    * null / omitted = piece-only product (no carton UI anywhere).

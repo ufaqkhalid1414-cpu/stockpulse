@@ -9,6 +9,7 @@ import {
   findMembershipForSession,
 } from "@/lib/db/queries";
 import { getAuthAccountByEmail } from "@/lib/auth-accounts";
+import { INVITE_ONLY_MESSAGE, publicSignupAllowed } from "@/lib/public-access";
 import {
   attachBusinessToSession,
   destroySession,
@@ -143,6 +144,10 @@ export async function POST(request: Request) {
 
     if (body.action !== "create" && body.action !== "sample") {
       return jsonNoStore({ error: "Unknown action" }, { status: 400 });
+    }
+
+    if (!publicSignupAllowed()) {
+      return jsonNoStore({ error: INVITE_ONLY_MESSAGE }, { status: 403 });
     }
 
     const name = (body.name || "").trim() || "General Store";

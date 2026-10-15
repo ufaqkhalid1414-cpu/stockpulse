@@ -1,6 +1,7 @@
 import { formatMoney } from "@/lib/format";
 import type { Lang } from "@/lib/i18n";
-import { priceDelta, recountProducts, stockValue, totalQty } from "@/lib/metrics";
+import { productHasLowPlace } from "@/lib/low-stock";
+import { priceDelta, recountProducts, stockValue } from "@/lib/metrics";
 import type { Product } from "@/lib/types";
 
 /**
@@ -13,7 +14,7 @@ export function buildDailyReportMessage(input: {
 }): string {
   const { language, products } = input;
   const ur = language === "ur";
-  const low = products.filter((p) => totalQty(p) <= p.restockThreshold);
+  const low = products.filter((p) => productHasLowPlace(p));
   const recount = recountProducts(products);
   const value = stockValue(products);
 

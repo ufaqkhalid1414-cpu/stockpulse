@@ -73,8 +73,9 @@ const en = {
   needsRecountBadge: "Needs recount",
   needsRecountHint: "More was sold than the app had. Please count and correct.",
   searchProducts: "Search products",
-  searchPlaceholder: "Search by name, category, or size",
-  searchNoResults: "No products match that search.",
+  searchPlaceholder: "Search products by name...",
+  searchNoResults: "No products found. Try another name.",
+  searchClear: "Clear search",
   searchAddThis: "Add this product",
   searchAllCategories: "All categories",
   searchShowMore: "Show more",
@@ -231,6 +232,9 @@ const en = {
   warehouse: "Warehouse",
   shop: "Shop",
   online: "Online Store",
+  locationWarehouseHint: "Stock kept in your storage room or main stock location.",
+  locationShopHint: "Stock physically available in your shop.",
+  locationOnlineHint: "Stock allocated to your online store or online sales.",
   itemsEmptyTitle: "No products yet",
   itemsEmptySupport: "Add one and it will be listed here.",
   back: "Back",
@@ -539,6 +543,11 @@ const en = {
   loginGoogleFailed: "Google sign-in didn't complete. Try again or use another method.",
   installStockPulse: "Install StockPulse",
   installIosHint: "To install: tap Share, then Add to Home Screen.",
+  installDesktopHint:
+    "On this laptop: open this page in Chrome or Edge, then click the install icon in the address bar (⊕ or computer), or open the browser menu (⋮) → Install StockPulse / Install this site as an app. That puts an icon on your desktop.",
+  inviteOnlyNotice:
+    "StockPulse is invite-only right now. Ask an owner to add your WhatsApp number, then log in.",
+  loginGoogleInviteOnly: "Google sign-in is only for people already on a business.",
   loginWhatsapp: "Your WhatsApp number",
   loginWhatsappHint: "Include the country code. Example: +92 300 1234567",
   sendCode: "Send code on WhatsApp",
@@ -632,6 +641,11 @@ const ur = pack({
   voiceUnsupported: "اس براؤزر میں آواز سے لکھنا دستیاب نہیں",
   installStockPulse: "اسٹاک پلس انسٹال کریں",
   installIosHint: "انسٹال کرنے کے لیے: Share دبائیں، پھر Add to Home Screen۔",
+  installDesktopHint:
+    "اس لیپ ٹاپ پر: Chrome یا Edge میں یہ صفحہ کھولیں، ایڈریس بار میں انسٹال آئیکن (⊕ یا کمپیوٹر) دبائیں، یا مینو (⋮) → Install StockPulse / Install this site as an app۔ ڈیسک ٹاپ پر آئیکن لگ جائے گا۔",
+  inviteOnlyNotice:
+    "اسٹاک پلس ابھی صرف دعوت پر ہے۔ مالک سے اپنا واٹس ایپ نمبر شامل کروائیں، پھر لاگ ان کریں۔",
+  loginGoogleInviteOnly: "گوگل سائن اِن صرف ان لوگوں کے لیے ہے جو پہلے سے کسی بزنس پر ہیں۔",
   loginTitle: "لاگ اِن",
   loginBody: "واٹس ایپ، گوگل، یا ای میل سے سائن اِن کریں۔",
   loginWithWhatsapp: "واٹس ایپ سے جاری رکھیں",
@@ -740,6 +754,9 @@ const ur = pack({
   warehouse: "گودام",
   shop: "دکان",
   online: "آن لائن اسٹور",
+  locationWarehouseHint: "اسٹاک جو آپ کے اسٹوریج روم یا مرکزی اسٹاک جگہ میں ہو۔",
+  locationShopHint: "اسٹاک جو آپ کی دکان میں جسمانی طور پر دستیاب ہو۔",
+  locationOnlineHint: "اسٹاک جو آپ کے آن لائن اسٹور یا آن لائن فروخت کے لیے رکھا ہو۔",
   itemsEmptyTitle: "ابھی کوئی چیز نہیں",
   itemsEmptySupport: "ایک چیز شامل کریں، وہ یہیں لکھی جائے گی۔",
   back: "واپس",
@@ -819,6 +836,10 @@ const ur = pack({
 const zh = pack({
   installStockPulse: "安装 StockPulse",
   installIosHint: "安装方式：点分享，然后选“添加到主屏幕”。",
+  installDesktopHint:
+    "在此电脑：用 Chrome 或 Edge 打开本页，点击地址栏安装图标（⊕ 或电脑），或菜单（⋮）→ 安装 StockPulse / 将此站点安装为应用。桌面会出现图标。",
+  inviteOnlyNotice: "StockPulse 目前仅限邀请。请让店主添加您的 WhatsApp 号码后再登录。",
+  loginGoogleInviteOnly: "Google 登录仅限已加入店铺的人员。",
   setupTitle: "用白话看清你的库存",
   setupBody: "StockPulse 让仓库和店里的货一目了然。",
   businessName: "店名",
@@ -887,6 +908,9 @@ const zh = pack({
   warehouse: "仓库",
   shop: "店铺",
   online: "网店",
+  locationWarehouseHint: "存放在仓储室或主要库存位置的货物。",
+  locationShopHint: "店内实际可售的货物。",
+  locationOnlineHint: "分配给网店或线上销售的货物。",
   itemsEmptyTitle: "还没有商品",
   itemsEmptySupport: "添加一件后，它会列在这里。",
   back: "返回",
@@ -957,6 +981,11 @@ const zh = pack({
 const de = pack({
   installStockPulse: "StockPulse installieren",
   installIosHint: "Zum Installieren: Teilen tippen, dann „Zum Home-Bildschirm“.",
+  installDesktopHint:
+    "Auf diesem Laptop: Seite in Chrome oder Edge öffnen, Install-Symbol in der Adressleiste (⊕ oder Computer) anklicken, oder Menü (⋮) → StockPulse installieren / Diese Website als App installieren. Dann erscheint ein Desktop-Symbol.",
+  inviteOnlyNotice:
+    "StockPulse ist derzeit nur auf Einladung. Bitte lass den Inhaber deine WhatsApp-Nummer hinzufügen und melde dich dann an.",
+  loginGoogleInviteOnly: "Google-Anmeldung nur für Personen, die bereits in einem Betrieb sind.",
   setupTitle: "Sehen Sie Ihren Bestand in klaren Worten",
   setupBody: "StockPulse hält ein ruhiges Bild von Lager und Laden bereit.",
   businessName: "Name des Geschäfts",
@@ -1025,6 +1054,9 @@ const de = pack({
   warehouse: "Lager",
   shop: "Laden",
   online: "Online-Shop",
+  locationWarehouseHint: "Bestand im Lagerraum oder am Hauptlagerort.",
+  locationShopHint: "Bestand, der physisch in Ihrem Laden verfügbar ist.",
+  locationOnlineHint: "Bestand für Ihren Online-Shop oder Online-Verkäufe.",
   itemsEmptyTitle: "Noch keine Produkte",
   itemsEmptySupport: "Fügen Sie eines hinzu. Es wird dann hier aufgeführt.",
   back: "Zurück",
@@ -1095,6 +1127,11 @@ const de = pack({
 const ar = pack({
   installStockPulse: "تثبيت StockPulse",
   installIosHint: "للتثبيت: اضغط مشاركة ثم أضف إلى الشاشة الرئيسية.",
+  installDesktopHint:
+    "على هذا الجهاز: افتح الصفحة في Chrome أو Edge، ثم انقر أيقونة التثبيت في شريط العنوان (⊕ أو جهاز)، أو القائمة (⋮) → تثبيت StockPulse / تثبيت هذا الموقع كتطبيق. ستظهر أيقونة على سطح المكتب.",
+  inviteOnlyNotice:
+    "StockPulse بالدعوة فقط الآن. اطلب من المالك إضافة رقم واتسابك ثم سجّل الدخول.",
+  loginGoogleInviteOnly: "تسجيل الدخول عبر Google فقط لمن هم بالفعل في نشاط تجاري.",
   setupTitle: "اطّلع على مخزونك بكلام واضح",
   setupBody: "StockPulse يبقي صورة هادئة لما لديك في المستودع وفي المحل.",
   businessName: "اسم النشاط",
@@ -1163,6 +1200,9 @@ const ar = pack({
   warehouse: "المستودع",
   shop: "المحل",
   online: "المتجر الإلكتروني",
+  locationWarehouseHint: "المخزون في غرفة التخزين أو موقع المخزون الرئيسي.",
+  locationShopHint: "المخزون المتاح فعلياً في محلك.",
+  locationOnlineHint: "المخزون المخصص لمتجرك الإلكتروني أو المبيعات عبر الإنترنت.",
   itemsEmptyTitle: "لا منتجات بعد",
   itemsEmptySupport: "أضف منتجاً وسيُدرج هنا.",
   back: "رجوع",
@@ -1233,6 +1273,11 @@ const ar = pack({
 const es = pack({
   installStockPulse: "Instalar StockPulse",
   installIosHint: "Para instalar: toca Compartir y luego Añadir a pantalla de inicio.",
+  installDesktopHint:
+    "En este portátil: abre esta página en Chrome o Edge, pulsa el icono de instalar en la barra de direcciones (⊕ o PC), o el menú (⋮) → Instalar StockPulse / Instalar este sitio como aplicación. Aparecerá un icono en el escritorio.",
+  inviteOnlyNotice:
+    "StockPulse es solo por invitación por ahora. Pide al dueño que añada tu WhatsApp y luego inicia sesión.",
+  loginGoogleInviteOnly: "Google solo para quienes ya están en un negocio.",
   setupTitle: "Mira tu stock con palabras claras",
   setupBody: "StockPulse guarda una imagen tranquila de lo que tienes en el almacén y en la tienda.",
   businessName: "Nombre del negocio",
@@ -1301,6 +1346,9 @@ const es = pack({
   warehouse: "Almacén",
   shop: "Tienda",
   online: "Tienda en línea",
+  locationWarehouseHint: "Stock en tu almacén o ubicación principal.",
+  locationShopHint: "Stock disponible físicamente en tu tienda.",
+  locationOnlineHint: "Stock asignado a tu tienda en línea o ventas online.",
   itemsEmptyTitle: "Aún no hay productos",
   itemsEmptySupport: "Añade uno y aparecerá en la lista.",
   back: "Volver",
@@ -1371,6 +1419,11 @@ const es = pack({
 const fr = pack({
   installStockPulse: "Installer StockPulse",
   installIosHint: "Pour installer : touchez Partager, puis Sur l’écran d’accueil.",
+  installDesktopHint:
+    "Sur cet ordinateur : ouvrez cette page dans Chrome ou Edge, cliquez l’icône d’installation dans la barre d’adresse (⊕ ou ordinateur), ou le menu (⋮) → Installer StockPulse / Installer ce site en tant qu’application. Une icône apparaît sur le bureau.",
+  inviteOnlyNotice:
+    "StockPulse est sur invitation seulement. Demandez au propriétaire d’ajouter votre WhatsApp, puis connectez-vous.",
+  loginGoogleInviteOnly: "Google réservé aux personnes déjà rattachées à une entreprise.",
   setupTitle: "Voyez votre stock en mots simples",
   setupBody: "StockPulse garde une image calme de ce que vous avez à l'entrepôt et en magasin.",
   businessName: "Nom du commerce",
@@ -1439,6 +1492,9 @@ const fr = pack({
   warehouse: "Entrepôt",
   shop: "Magasin",
   online: "Boutique en ligne",
+  locationWarehouseHint: "Stock dans votre réserve ou emplacement principal.",
+  locationShopHint: "Stock physiquement disponible dans votre magasin.",
+  locationOnlineHint: "Stock alloué à votre boutique en ligne ou ventes en ligne.",
   itemsEmptyTitle: "Pas encore de produits",
   itemsEmptySupport: "Ajoutez-en un et il sera listé ici.",
   back: "Retour",
@@ -1509,6 +1565,11 @@ const fr = pack({
 const hi = pack({
   installStockPulse: "StockPulse इंस्टॉल करें",
   installIosHint: "इंस्टॉल करने के लिए: Share टैप करें, फिर Add to Home Screen।",
+  installDesktopHint:
+    "इस लैपटॉप पर: Chrome या Edge में यह पेज खोलें, एड्रेस बार में इंस्टॉल आइकन (⊕ या कंप्यूटर) दबाएँ, या मेनू (⋮) → Install StockPulse / Install this site as an app। डेस्कटॉप पर आइकन लग जाएगा।",
+  inviteOnlyNotice:
+    "StockPulse अभी केवल आमंत्रण पर है। मालिक से अपना WhatsApp नंबर जुड़वाएँ, फिर लॉग इन करें।",
+  loginGoogleInviteOnly: "Google साइन-इन केवल उन लोगों के लिए जो पहले से किसी बिज़नेस पर हैं।",
   setupTitle: "अपना स्टॉक आसान शब्दों में देखें",
   setupBody: "StockPulse गोदाम और दुकान दोनों का एक शांत हिसाब रखता है।",
   businessName: "कारोबार का नाम",
@@ -1577,6 +1638,9 @@ const hi = pack({
   warehouse: "गोदाम",
   shop: "दुकान",
   online: "ऑनलाइन स्टोर",
+  locationWarehouseHint: "स्टॉक जो आपके स्टोरेज रूम या मुख्य स्टॉक जगह में हो।",
+  locationShopHint: "स्टॉक जो आपकी दुकान में शारीरिक रूप से उपलब्ध हो।",
+  locationOnlineHint: "स्टॉक जो आपके ऑनलाइन स्टोर या ऑनलाइन बिक्री के लिए रखा हो।",
   itemsEmptyTitle: "अभी कोई चीज़ नहीं",
   itemsEmptySupport: "एक चीज़ जोड़ें, वह यहीं लिखी जाएगी।",
   back: "वापस",
@@ -1647,6 +1711,11 @@ const hi = pack({
 const pt = pack({
   installStockPulse: "Instalar StockPulse",
   installIosHint: "Para instalar: toque em Compartilhar e depois Adicionar à Tela de Início.",
+  installDesktopHint:
+    "Neste laptop: abra esta página no Chrome ou Edge, clique no ícone de instalar na barra de endereço (⊕ ou computador), ou no menu (⋮) → Instalar StockPulse / Instalar este site como um aplicativo. O ícone aparece na área de trabalho.",
+  inviteOnlyNotice:
+    "O StockPulse é apenas por convite por enquanto. Peça ao dono para adicionar seu WhatsApp e depois entre.",
+  loginGoogleInviteOnly: "Google só para quem já está em um negócio.",
   setupTitle: "Veja seu estoque em palavras simples",
   setupBody: "O StockPulse guarda uma imagem calma do que você tem no depósito e na loja.",
   businessName: "Nome do negócio",
@@ -1715,6 +1784,9 @@ const pt = pack({
   warehouse: "Depósito",
   shop: "Loja",
   online: "Loja online",
+  locationWarehouseHint: "Estoque no depósito ou local principal de estoque.",
+  locationShopHint: "Estoque fisicamente disponível na sua loja.",
+  locationOnlineHint: "Estoque destinado à loja online ou às vendas online.",
   itemsEmptyTitle: "Ainda não há produtos",
   itemsEmptySupport: "Adicione um e ele será listado aqui.",
   back: "Voltar",

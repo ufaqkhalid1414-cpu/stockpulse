@@ -5,6 +5,7 @@ import { exchangeGoogleCode, upsertGoogleAccount } from "@/lib/auth-accounts";
 import { ensureDbReady, persistDb } from "@/lib/db";
 import { findMembershipByEmail } from "@/lib/db/queries";
 import { logError, logInfo, logWarn } from "@/lib/logger";
+import { publicSignupAllowed } from "@/lib/public-access";
 import {
   createSession,
   resolveBusinessForEmail,
@@ -58,6 +59,10 @@ export async function GET(request: Request) {
     const existing = await resolveBusinessForEmail(account.email);
     const membership = await findMembershipByEmail(account.email);
     const businessId = existing?.id ?? account.businessId ?? null;
+    if (!publicSignupAllowed() && !businessId) {
+      logWarn("google_invite_only_blocked", { email: account.email });
+      return redirectLogin("invite_only");
+    }
     const created = await createSession(null, businessId, {
       email: account.email,
       name: membership?.name ?? account.name,

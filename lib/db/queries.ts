@@ -55,15 +55,99 @@ import { formatMoney } from "@/lib/format";
 import { priceInUnit } from "@/lib/price-display";
 import { purchasePriceChangePct, shouldAlertOnPurchasePriceChange } from "@/lib/price-math";
 import { rearmRecountAlert } from "@/lib/alert-throttle";
+import {
+  DEFAULT_LOW_STOCK_NUMBER,
+  buildLowStockAlertMessage,
+  evaluateLowStockCrossing,
+  markEverHeld,
+  placeLinesForProduct,
+  readAlertedByPlace,
+  readEverHeldByPlace,
+} from "@/lib/low-stock";
 import fs from "fs";
 import path from "path";
 import type { DocumentData, Transaction } from "firebase-admin/firestore";
 
 /** Default when Add Product leaves the threshold blank. */
-export const DEFAULT_LOW_STOCK_THRESHOLD = 5;
+export const DEFAULT_LOW_STOCK_THRESHOLD = DEFAULT_LOW_STOCK_NUMBER;
 
 export function locationLabel(location: Location, places?: StockPlace[]) {
   return placeDisplayName(places, location);
+}
+
+function readEverHeldMap(data: DocumentData): Record<string, boolean> {
+  return readEverHeldByPlace(data as Parameters<typeof readEverHeldByPlace>[0]);
+}
+
+function readLowStockAlertedMap(data: DocumentData): Record<string, boolean> {
+  return readAlertedByPlace(data as Parameters<typeof readAlertedByPlace>[0]);
+}
+
+type LowStockEval = {
+  shouldAlert: boolean;
+  alertedByPlace: Record<string, boolean>;
+  everHeldByPlace: Record<string, boolean>;
+  lowPlaceId: Location;
+  lowPlaceQty: number;
+};
+
+/** Apply crossing / re-arm for one place after a qty change. */
+function applyPlaceLowStockEval(input: {
+  data: DocumentData;
+  placeId: Location;
+  previousQty: number;
+  newQty: number;
+}): LowStockEval {
+  const threshold = Number(input.data.restockThreshold ?? DEFAULT_LOW_STOCK_THRESHOLD);
+  const alertedByPlace = readLowStockAlertedMap(input.data);
+  const everHeldByPlace = markEverHeld(readEverHeldMap(input.data), input.placeId, input.newQty);
+  // Also mark if we started from a non-zero qty (held before).
+  if (input.previousQty !== 0) everHeldByPlace[input.placeId] = true;
+
+  const crossing = evaluateLowStockCrossing({
+    previousQty: input.previousQty,
+    newQty: input.newQty,
+    threshold,
+    alreadyAlerted: Boolean(alertedByPlace[input.placeId]),
+  });
+  alertedByPlace[input.placeId] = crossing.nextAlerted;
+
+  return {
+    shouldAlert: crossing.fire,
+    alertedByPlace,
+    everHeldByPlace,
+    lowPlaceId: input.placeId,
+    lowPlaceQty: input.newQty,
+  };
+}
+
+async function buildLowStockAlertRow(
+  businessId: string,
+  productId: string,
+  productName: string,
+  lowPlaceId: Location,
+  lowPlaceQty: number,
+): Promise<AlertRow> {
+  const product = await getProduct(businessId, productId);
+  const business = await getBusiness(businessId);
+  const places = business?.places;
+  const lines = product
+    ? placeLinesForProduct(product, places)
+    : [{ id: lowPlaceId, name: locationLabel(lowPlaceId, places), qty: Math.max(0, lowPlaceQty), low: true }];
+  const { title, body } = buildLowStockAlertMessage({
+    productName,
+    lowPlaceId,
+    lowPlaceQty,
+    placeLines: lines,
+    language: business?.language,
+    places,
+  });
+  return createAlert(businessId, {
+    productId,
+    kind: "low_stock",
+    title,
+    body,
+  });
 }
 
 function readLocationQtys(data: DocumentData): LocationQtys {
@@ -239,6 +323,8 @@ function mapProductDoc(
     needsRecountShop: flags.needsRecountShop,
     needsRecountOnline: flags.needsRecountOnline,
     recountByPlace: flags.recountByPlace,
+    everHeldByPlace: readEverHeldMap(data),
+    lowStockAlertedByPlace: readLowStockAlertedMap(data),
   };
 }
 
@@ -663,6 +749,8 @@ export async function addProduct(
     piecesPerCarton: ppc,
     priceCompareUnit,
     lowStockAlerted: false,
+    lowStockAlertedByPlace: {} as Record<string, boolean>,
+    everHeldByPlace: { [input.location]: true } as Record<string, boolean>,
     photo: input.photo ?? null,
     createdAt: created,
     shopifyVariantId: null,
@@ -828,7 +916,14 @@ export async function recordSale(
   const productRef = bizRef(businessId).collection("products").doc(input.productId);
   type TxResult = { audit: RecordSaleAudit; shouldAlert: boolean };
 
-  const { result, replayed } = await runStockTransaction<TxResult>(
+  type SaleTx = TxResult & {
+    shouldAlert: boolean;
+    suppressForRecount: boolean;
+    lowPlaceId: Location;
+    lowPlaceQty: number;
+  };
+
+  const { result, replayed } = await runStockTransaction<SaleTx>(
     businessId,
     input.idempotencyKey,
     "recordSale",
@@ -837,8 +932,6 @@ export async function recordSale(
       if (!snap.exists) throw new Error("Product not found");
       const data = snap.data()!;
       const productName = String(data.name ?? "");
-      const threshold = Number(data.restockThreshold ?? DEFAULT_LOW_STOCK_THRESHOLD);
-      const lowStockAlerted = Boolean(data.lowStockAlerted);
       const flags = readRecountFlags(data);
 
       // Prompt 16 Part A: always record in full — quantity may go negative.
@@ -847,22 +940,23 @@ export async function recordSale(
         ? withRecountFlag(flags, input.location, true)
         : flags;
 
-      // Low-stock uses DISPLAYED total (non-negative). Debounce with lowStockAlerted.
-      const displayTotal = displayTotalAcrossLocations(deduction.next);
-      let nextAlerted = lowStockAlerted;
-      let shouldAlert = false;
-      if (displayTotal > threshold) {
-        nextAlerted = false;
-      } else if (displayTotal <= threshold && !lowStockAlerted) {
-        nextAlerted = true;
-        shouldAlert = true;
-      }
+      // Prompt 20: per-place crossing alert (never on add/create).
+      const low = applyPlaceLowStockEval({
+        data,
+        placeId: input.location,
+        previousQty: deduction.previousLocationQty,
+        newQty: deduction.newLocationQty,
+      });
+      // If this sale also needs a recount, send only the recount alert.
+      const shouldAlert = low.shouldAlert && !deduction.neededRecount;
 
       txn.set(
         productRef,
         {
           ...stockWritePayload(deduction.next, nextFlags),
-          lowStockAlerted: nextAlerted,
+          lowStockAlertedByPlace: low.alertedByPlace,
+          everHeldByPlace: low.everHeldByPlace,
+          lowStockAlerted: false,
         },
         { merge: true },
       );
@@ -888,6 +982,9 @@ export async function recordSale(
           neededRecount: deduction.neededRecount,
         },
         shouldAlert,
+        suppressForRecount: low.shouldAlert && deduction.neededRecount,
+        lowPlaceId: low.lowPlaceId,
+        lowPlaceQty: low.lowPlaceQty,
       };
     },
   );
@@ -905,19 +1002,24 @@ export async function recordSale(
 
   let alert: AlertRow | null = null;
   if (!replayed && result.shouldAlert) {
-    const place = locationLabel(input.location);
-    const shown = Math.max(0, result.audit.newLocationQty);
-    alert = await createAlert(businessId, {
-      productId: input.productId,
-      kind: "low_stock",
-      title: `⚠️ ${result.audit.productName} running low`,
-      body: `${shown} left in ${place}. Reorder soon.`,
-    });
+    alert = await buildLowStockAlertRow(
+      businessId,
+      input.productId,
+      result.audit.productName,
+      result.lowPlaceId,
+      result.lowPlaceQty,
+    );
     logInfo("low_stock_alert_triggered", {
       businessId,
       productId: input.productId,
+      location: result.lowPlaceId,
+      locationQty: Math.max(0, result.lowPlaceQty),
+    });
+  } else if (!replayed && result.suppressForRecount) {
+    logInfo("low_stock_alert_suppressed_for_recount", {
+      businessId,
+      productId: input.productId,
       location: input.location,
-      locationQty: shown,
     });
   }
   return { product: (await getProduct(businessId, input.productId))!, alert, replayed, audit: result.audit };
@@ -950,21 +1052,24 @@ export async function addStock(
       if (!snap.exists) throw new Error("Product not found");
       const data = snap.data()!;
       const productName = String(data.name ?? "");
-      const threshold = Number(data.restockThreshold ?? DEFAULT_LOW_STOCK_THRESHOLD);
-      const lowStockAlerted = Boolean(data.lowStockAlerted);
       const addition = applyStockAdd(readLocationQtys(data), input.location, input.quantity);
       const flags = readRecountFlags(data);
 
-      // Adding stock never triggers a low-stock alert by itself — it only
-      // clears the debounce flag once the total climbs back above threshold
-      // (same rule recordSale uses for the opposite direction).
-      const nextAlerted = addition.newTotal > threshold ? false : lowStockAlerted;
+      // Adding stock never alerts — it only re-arms when the place rises above the number.
+      const low = applyPlaceLowStockEval({
+        data,
+        placeId: input.location,
+        previousQty: addition.previousLocationQty,
+        newQty: addition.newLocationQty,
+      });
 
       txn.set(
         productRef,
         {
           ...stockWritePayload(addition.next, flags),
-          lowStockAlerted: nextAlerted,
+          lowStockAlertedByPlace: low.alertedByPlace,
+          everHeldByPlace: low.everHeldByPlace,
+          lowStockAlerted: false,
         },
         { merge: true },
       );
@@ -1004,11 +1109,17 @@ export type MoveStockAudit = {
 export async function moveStock(
   businessId: string,
   input: { productId: string; from: Location; to: Location; quantity: number; idempotencyKey: string },
-): Promise<{ product: Product; replayed: boolean; audit: MoveStockAudit }> {
+): Promise<{ product: Product; replayed: boolean; alert: AlertRow | null; audit: MoveStockAudit }> {
   const productRef = bizRef(businessId).collection("products").doc(input.productId);
-  type TxResult = { audit: MoveStockAudit };
+  type MoveTx = {
+    audit: MoveStockAudit;
+    shouldAlert: boolean;
+    suppressForRecount: boolean;
+    lowPlaceId: Location;
+    lowPlaceQty: number;
+  };
 
-  const { result, replayed } = await runStockTransaction<TxResult>(
+  const { result, replayed } = await runStockTransaction<MoveTx>(
     businessId,
     input.idempotencyKey,
     "moveStock",
@@ -1023,10 +1134,32 @@ export async function moveStock(
       const move = applyStockMove(readLocationQtys(data), input.from, input.to, input.quantity);
       const nextFlags = move.neededRecount ? withRecountFlag(flags, input.from, true) : flags;
 
+      // Prompt 20: source may cross into low; destination may re-arm when lifted above.
+      const fromLow = applyPlaceLowStockEval({
+        data,
+        placeId: input.from,
+        previousQty: move.previousFromQty,
+        newQty: move.newFromQty,
+      });
+      const toLow = applyPlaceLowStockEval({
+        data: {
+          ...data,
+          lowStockAlertedByPlace: fromLow.alertedByPlace,
+          everHeldByPlace: fromLow.everHeldByPlace,
+        },
+        placeId: input.to,
+        previousQty: move.previousToQty,
+        newQty: move.newToQty,
+      });
+      const shouldAlert = fromLow.shouldAlert && !move.neededRecount;
+
       txn.set(
         productRef,
         {
           ...stockWritePayload(move.next, nextFlags),
+          lowStockAlertedByPlace: toLow.alertedByPlace,
+          everHeldByPlace: toLow.everHeldByPlace,
+          lowStockAlerted: false,
         },
         { merge: true },
       );
@@ -1044,6 +1177,10 @@ export async function moveStock(
           productId: input.productId,
           neededRecount: move.neededRecount,
         },
+        shouldAlert,
+        suppressForRecount: fromLow.shouldAlert && move.neededRecount,
+        lowPlaceId: fromLow.lowPlaceId,
+        lowPlaceQty: fromLow.lowPlaceQty,
       };
     },
   );
@@ -1057,7 +1194,25 @@ export async function moveStock(
     neededRecount: result.audit.neededRecount,
     replayed,
   });
-  return { product: (await getProduct(businessId, input.productId))!, replayed, audit: result.audit };
+
+  let alert: AlertRow | null = null;
+  if (!replayed && result.shouldAlert) {
+    alert = await buildLowStockAlertRow(
+      businessId,
+      input.productId,
+      result.audit.productName,
+      result.lowPlaceId,
+      result.lowPlaceQty,
+    );
+    logInfo("low_stock_alert_triggered", {
+      businessId,
+      productId: input.productId,
+      location: result.lowPlaceId,
+      locationQty: Math.max(0, result.lowPlaceQty),
+      via: "move",
+    });
+  }
+  return { product: (await getProduct(businessId, input.productId))!, replayed, alert, audit: result.audit };
 }
 
 export type CorrectCountAudit = {
@@ -1075,7 +1230,12 @@ export async function correctCount(
   input: { productId: string; location: Location; newCount: number; idempotencyKey: string },
 ): Promise<{ product: Product; replayed: boolean; alert: AlertRow | null; audit: CorrectCountAudit }> {
   const productRef = bizRef(businessId).collection("products").doc(input.productId);
-  type TxResult = { audit: CorrectCountAudit; shouldAlert: boolean };
+  type TxResult = {
+    audit: CorrectCountAudit;
+    shouldAlert: boolean;
+    lowPlaceId: Location;
+    lowPlaceQty: number;
+  };
 
   const { result, replayed } = await runStockTransaction<TxResult>(
     businessId,
@@ -1086,26 +1246,23 @@ export async function correctCount(
       if (!snap.exists) throw new Error("Product not found");
       const data = snap.data()!;
       const productName = String(data.name ?? "");
-      const threshold = Number(data.restockThreshold ?? DEFAULT_LOW_STOCK_THRESHOLD);
-      const lowStockAlerted = Boolean(data.lowStockAlerted);
       const correction = applyStockCorrection(readLocationQtys(data), input.location, input.newCount);
       const flags = withRecountFlag(readRecountFlags(data), input.location, false);
 
-      const displayTotal = displayTotalAcrossLocations(correction.next);
-      let nextAlerted = lowStockAlerted;
-      let shouldAlert = false;
-      if (displayTotal > threshold) {
-        nextAlerted = false;
-      } else if (displayTotal <= threshold && !lowStockAlerted) {
-        nextAlerted = true;
-        shouldAlert = true;
-      }
+      const low = applyPlaceLowStockEval({
+        data,
+        placeId: input.location,
+        previousQty: correction.previousLocationQty,
+        newQty: correction.newLocationQty,
+      });
 
       txn.set(
         productRef,
         {
           ...stockWritePayload(correction.next, flags),
-          lowStockAlerted: nextAlerted,
+          lowStockAlertedByPlace: low.alertedByPlace,
+          everHeldByPlace: low.everHeldByPlace,
+          lowStockAlerted: false,
         },
         { merge: true },
       );
@@ -1120,20 +1277,22 @@ export async function correctCount(
           productName,
           productId: input.productId,
         },
-        shouldAlert,
+        shouldAlert: low.shouldAlert,
+        lowPlaceId: low.lowPlaceId,
+        lowPlaceQty: low.lowPlaceQty,
       };
     },
   );
 
   let alert: AlertRow | null = null;
   if (!replayed && result.shouldAlert) {
-    const place = locationLabel(input.location);
-    alert = await createAlert(businessId, {
-      productId: input.productId,
-      kind: "low_stock",
-      title: `⚠️ ${result.audit.productName} running low`,
-      body: `${result.audit.newLocationQty} left in ${place} after a stock correction. Reorder soon.`,
-    });
+    alert = await buildLowStockAlertRow(
+      businessId,
+      input.productId,
+      result.audit.productName,
+      result.lowPlaceId,
+      result.lowPlaceQty,
+    );
   }
 
   if (!replayed) {

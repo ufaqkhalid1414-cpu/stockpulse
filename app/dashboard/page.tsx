@@ -22,7 +22,7 @@ export default function DashboardPage() {
   const lang = state.language;
   const products = state.products;
   const total = stockValue(products);
-  const low = lowStockProducts(products);
+  const low = lowStockProducts(products, state.places);
   const changed = changedProducts(products);
   const recount = recountProducts(products);
   const moves = biggestMoves(products, 5);

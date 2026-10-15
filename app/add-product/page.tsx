@@ -8,6 +8,7 @@ import { Menu } from "@/components/Menu";
 import { StockActionButtons } from "@/components/StockActions";
 import { Button, Field, Lead, BackLabel } from "@/components/ui";
 import { VoiceInput } from "@/components/VoiceInput";
+import { defaultNewStockLocation, DEFAULT_NEW_PRICE_UNIT } from "@/lib/add-product-defaults";
 import { t } from "@/lib/i18n";
 import { readPhoto } from "@/lib/photo";
 import { findExactProduct, findNameMatches, findSimilarProducts } from "@/lib/product-search";
@@ -22,16 +23,16 @@ export default function AddProductPage() {
   const { state, addProduct, role, homePath, busy } = useStock();
   const lang = state.language;
   const places = state.places?.length ? state.places : [];
-  const defaultPlace = places[0]?.id || "warehouse";
   const router = useRouter();
   const isStaff =
     role === "staff_add" || role === "staff_view" || role === "staff_sell" || role === "staff_move";
   const fileRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
-  const [location, setLocation] = useState<Location>(defaultPlace);
+  const [location, setLocation] = useState<Location>(() => defaultNewStockLocation(places));
+  const [locationTouched, setLocationTouched] = useState(false);
   const [quantity, setQuantity] = useState("1");
-  const [priceUnit, setPriceUnit] = useState<PriceUnit>("piece");
+  const [priceUnit, setPriceUnit] = useState<PriceUnit>(DEFAULT_NEW_PRICE_UNIT);
   const [price, setPrice] = useState("");
   const [piecesPerCarton, setPiecesPerCarton] = useState("");
   const [threshold, setThreshold] = useState("");
@@ -62,6 +63,12 @@ export default function AddProductPage() {
       namePrefillDone.current = true;
     }
   }, []);
+
+  // Prefer Shop once places load; never overwrite after the user picks another place.
+  useEffect(() => {
+    if (locationTouched) return;
+    setLocation(defaultNewStockLocation(places));
+  }, [places, locationTouched]);
 
   const nameMatches = useMemo(
     () => findNameMatches(state.products, name, 5),
@@ -167,8 +174,9 @@ export default function AddProductPage() {
       setThreshold("");
       setPhoto(undefined);
       setShowPhoto(false);
-      setPriceUnit("piece");
-      setLocation(places[0]?.id || "warehouse");
+      setPriceUnit(DEFAULT_NEW_PRICE_UNIT);
+      setLocationTouched(false);
+      setLocation(defaultNewStockLocation(places));
     } else {
       router.push("/dashboard", { scroll: false });
     }
@@ -369,8 +377,25 @@ export default function AddProductPage() {
                       { value: "online", label: t(lang, "online") },
                     ]
               }
-              onChange={(value) => setLocation(value as Location)}
+              onChange={(value) => {
+                setLocationTouched(true);
+                setLocation(value as Location);
+              }}
             />
+            <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-navy/60" aria-describedby="location-label">
+              <li>
+                <span className="font-semibold text-navy/75">{t(lang, "warehouse")}:</span>{" "}
+                {t(lang, "locationWarehouseHint")}
+              </li>
+              <li>
+                <span className="font-semibold text-navy/75">{t(lang, "shop")}:</span>{" "}
+                {t(lang, "locationShopHint")}
+              </li>
+              <li>
+                <span className="font-semibold text-navy/75">{t(lang, "online")}:</span>{" "}
+                {t(lang, "locationOnlineHint")}
+              </li>
+            </ul>
           </div>
           <Field id="quantity" label={t(lang, "quantity")} error={errors.quantity}>
             <VoiceInput id="quantity" lang={lang} inputMode="decimal" value={quantity} onChange={setQuantity} />

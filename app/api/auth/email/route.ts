@@ -11,6 +11,7 @@ import {
 import { ensureDbReady, persistDb } from "@/lib/db";
 import { findMembershipByEmail } from "@/lib/db/queries";
 import { logError, logInfo, logWarn } from "@/lib/logger";
+import { INVITE_ONLY_MESSAGE, publicSignupAllowed } from "@/lib/public-access";
 import {
   createSession,
   otpDevModeEnabled,
@@ -35,6 +36,9 @@ export async function POST(request: Request) {
 
   try {
     if (body.action === "signup") {
+      if (!publicSignupAllowed()) {
+        return jsonNoStore({ error: INVITE_ONLY_MESSAGE }, { status: 403 });
+      }
       const email = String(body.email || "").trim().toLowerCase();
       const password = String(body.password || "");
       const name = String(body.name || "").trim();
@@ -77,6 +81,9 @@ export async function POST(request: Request) {
       const existing = await resolveBusinessForEmail(account.email);
       const membership = await findMembershipByEmail(account.email);
       const businessId = existing?.id ?? account.businessId ?? null;
+      if (!publicSignupAllowed() && !businessId) {
+        return jsonNoStore({ error: INVITE_ONLY_MESSAGE }, { status: 403 });
+      }
       const created = await createSession(null, businessId, {
         email: account.email,
         name: membership?.name ?? account.name,

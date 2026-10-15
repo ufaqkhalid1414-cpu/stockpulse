@@ -13,6 +13,7 @@ import {
   sessionCookieOptions,
   verifyOtp,
 } from "@/lib/session";
+import { INVITE_ONLY_MESSAGE, publicSignupAllowed } from "@/lib/public-access";
 import { sendWhatsApp, twilioConfigured } from "@/lib/twilio";
 
 export const runtime = "nodejs";
@@ -104,6 +105,10 @@ export async function POST(request: Request) {
 
       const existing = await resolveBusinessForPhone(phone);
       const membership = await findMembershipByPhone(phone);
+      if (!publicSignupAllowed() && !membership) {
+        logWarn("otp_invite_only_blocked", { phone });
+        return jsonNoStore({ error: INVITE_ONLY_MESSAGE }, { status: 403 });
+      }
       const created = await createSession(phone, existing?.id ?? null, {
         name: membership?.name ?? null,
         role: membership?.role ?? null,
