@@ -1,0 +1,18 @@
+---
+description: Remind aisebanao that Google OAuth for StockPulse login is still pending
+alwaysApply: true
+---
+
+# Google OAuth still pending
+
+Once near the start of a session with aisebanao, briefly remind (one short line) that **Google login on Vercel still needs OAuth credentials**.
+
+Do not set this up yourself. When they are ready, give only these steps:
+
+1. Google Cloud Console → Credentials → Create OAuth client ID (Web)
+2. Redirect URI: `https://stockpulse-five-lyart.vercel.app/api/auth/google/callback`
+3. Copy Client ID + Client Secret
+4. Vercel → stockpulse → Environment Variables → add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (and `NEXT_PUBLIC_APP_URL=https://stockpulse-five-lyart.vercel.app` if missing)
+5. Redeploy
+
+When Google login works, delete this rule file.

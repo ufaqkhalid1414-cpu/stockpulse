@@ -3,32 +3,17 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useStock } from "@/lib/store";
-import type { AccessRole } from "@/lib/types";
-
-const OWNER_ONLY = ["/dashboard", "/settings", "/staff", "/low-stock", "/activity", "/import"];
-const STAFF_BLOCKED_PREFIX = "/prices";
-const PUBLIC = ["/", "/login", "/privacy", "/terms"];
-
-function pathAllowed(pathname: string, role: AccessRole | null) {
-  if (!role) return PUBLIC.includes(pathname);
-  if (role === "equal_owner" || role === "co_owner") return true;
-  if (pathname === "/dashboard" || OWNER_ONLY.includes(pathname) || pathname.startsWith(STAFF_BLOCKED_PREFIX)) {
-    return false;
-  }
-  if (role === "staff_add") {
-    return pathname === "/add-product" || pathname === "/items" || PUBLIC.includes(pathname);
-  }
-  if (role === "staff_view" || role === "staff_sell" || role === "staff_move") {
-    return pathname === "/items" || PUBLIC.includes(pathname);
-  }
-  return false;
-}
+import {
+  isPublicPath,
+  pathAllowed,
+  shouldBounceAuthenticatedFromPublic,
+} from "@/lib/route-access";
 
 export function Gate({ children }: { children: React.ReactNode }) {
   const { state, ready, authenticated, needsSetup, role, homePath } = useStock();
   const pathname = usePathname();
   const router = useRouter();
-  const onPublic = PUBLIC.includes(pathname);
+  const onPublic = isPublicPath(pathname);
 
   useEffect(() => {
     if (!ready) return;
@@ -40,7 +25,7 @@ export function Gate({ children }: { children: React.ReactNode }) {
       router.replace("/login");
       return;
     }
-    if (authenticated && !needsSetup && state.onboarded && onPublic) {
+    if (authenticated && !needsSetup && state.onboarded && shouldBounceAuthenticatedFromPublic(pathname)) {
       router.replace(homePath || "/dashboard");
       return;
     }

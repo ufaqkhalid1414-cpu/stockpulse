@@ -1,0 +1,10 @@
+---
+description: Daily reminder — Prompt 13 Before/After landing section is still missing
+alwaysApply: true
+---
+
+# Before / After landing reminder
+
+Once per calendar day in a session with aisebanao, briefly remind that the **Prompt 13 Before / After** landing section is still missing (scattered/complicated "before" vs StockPulse "after" with screenshots).
+
+**Do not implement** that section unless the user gives explicit instructions to build it.

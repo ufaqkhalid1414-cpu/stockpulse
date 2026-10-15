@@ -12,6 +12,54 @@ import { useStock } from "@/lib/store";
 
 type AuthView = "chooser" | "whatsapp" | "email-login" | "signup" | "forgot" | "reset";
 
+/** Module-level so typing does not remount inputs (nested components remount every keystroke). */
+function AuthEntryShell({
+  title,
+  body,
+  children,
+  alertError,
+  backLabel,
+  onBack,
+}: {
+  title: string;
+  body?: string;
+  children: React.ReactNode;
+  alertError?: string | null;
+  backLabel?: string;
+  onBack?: () => void;
+}) {
+  return (
+    <div className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center px-4 py-10 sm:px-6">
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <Link href="/" className="text-sm font-semibold text-navy/55">
+            StockPulse
+          </Link>
+          <span className="mt-3 block h-0.5 w-10 rounded-full bg-gold" />
+        </div>
+        <LanguageMenu align="end" />
+      </div>
+      <h1 className="text-3xl font-bold leading-tight tracking-tight text-navy sm:text-4xl">{title}</h1>
+      {body ? <p className="mt-3 text-base leading-relaxed text-navy/70">{body}</p> : null}
+      {children}
+      {alertError ? (
+        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+          {alertError}
+        </p>
+      ) : null}
+      {onBack && backLabel ? (
+        <button
+          type="button"
+          className="mt-6 text-sm font-semibold text-navy/65 underline-offset-4 hover:underline"
+          onClick={onBack}
+        >
+          {backLabel}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 /** Multi-method login + first-time business setup. */
 export function AuthEntry() {
   const router = useRouter();
@@ -165,60 +213,24 @@ export function AuthEntry() {
   const working = busy || localBusy;
   const alertError = localError || storeError;
 
-  function Shell({
-    title,
-    body,
-    children,
-    backToChooser,
-  }: {
-    title: string;
-    body?: string;
-    children: React.ReactNode;
-    backToChooser?: boolean;
-  }) {
-    return (
-      <div className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center px-4 py-10 sm:px-6">
-        <div className="mb-8 flex items-start justify-between gap-4">
-          <div>
-            <Link href="/" className="text-sm font-semibold text-navy/55">
-              StockPulse
-            </Link>
-            <span className="mt-3 block h-0.5 w-10 rounded-full bg-gold" />
-          </div>
-          <LanguageMenu align="end" />
-        </div>
-        <h1 className="text-3xl font-bold leading-tight tracking-tight text-navy sm:text-4xl">{title}</h1>
-        {body ? <p className="mt-3 text-base leading-relaxed text-navy/70">{body}</p> : null}
-        {children}
-        {alertError ? (
-          <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
-            {alertError}
-          </p>
-        ) : null}
-        {backToChooser ? (
-          <button
-            type="button"
-            className="mt-6 text-sm font-semibold text-navy/65 underline-offset-4 hover:underline"
-            onClick={() => {
-              setView("chooser");
-              setLocalError("");
-              setHint("");
-              setWaStep("phone");
-              setCode("");
-              setDevCode(null);
-            }}
-          >
-            {t(lang, "loginBackMethods")}
-          </button>
-        ) : null}
-      </div>
-    );
+  function backToChooser() {
+    setView("chooser");
+    setLocalError("");
+    setHint("");
+    setWaStep("phone");
+    setCode("");
+    setDevCode(null);
   }
+
+  const shellBack = {
+    backLabel: t(lang, "loginBackMethods"),
+    onBack: backToChooser,
+  };
 
   if (!authenticated) {
     if (view === "chooser") {
       return (
-        <Shell title={t(lang, "loginTitle")} body={t(lang, "loginBody")}>
+        <AuthEntryShell title={t(lang, "loginTitle")} body={t(lang, "loginBody")} alertError={alertError}>
           <div className="mt-8 space-y-3">
             <Button full disabled={working} onClick={() => setView("whatsapp")}>
               {t(lang, "loginWithWhatsapp")}
@@ -257,13 +269,18 @@ export function AuthEntry() {
           {googleConfigured === false ? (
             <p className="mt-4 text-xs leading-relaxed text-navy/50">{t(lang, "loginGoogleNotConfigured")}</p>
           ) : null}
-        </Shell>
+        </AuthEntryShell>
       );
     }
 
     if (view === "whatsapp") {
       return (
-        <Shell title={t(lang, "loginWhatsappTitle")} body={t(lang, "loginWhatsappBody")} backToChooser>
+        <AuthEntryShell
+          title={t(lang, "loginWhatsappTitle")}
+          body={t(lang, "loginWhatsappBody")}
+          alertError={alertError}
+          {...shellBack}
+        >
           {waStep === "phone" ? (
             <div className="card mt-8 space-y-4 p-5 sm:p-6">
               <Field id="wa-login" label={t(lang, "loginWhatsapp")}>
@@ -323,13 +340,18 @@ export function AuthEntry() {
               </Button>
             </div>
           )}
-        </Shell>
+        </AuthEntryShell>
       );
     }
 
     if (view === "email-login") {
       return (
-        <Shell title={t(lang, "loginEmailTitle")} body={t(lang, "loginEmailBody")} backToChooser>
+        <AuthEntryShell
+          title={t(lang, "loginEmailTitle")}
+          body={t(lang, "loginEmailBody")}
+          alertError={alertError}
+          {...shellBack}
+        >
           <p className="mt-4 text-sm leading-relaxed text-navy/60">{t(lang, "loginEmailInviteHint")}</p>
           <div className="card mt-6 space-y-4 p-5 sm:p-6">
             <Field id="email-login" label={t(lang, "loginEmail")}>
@@ -365,24 +387,34 @@ export function AuthEntry() {
               {t(lang, "loginForgotPassword")}
             </button>
           </div>
-        </Shell>
+        </AuthEntryShell>
       );
     }
 
     if (view === "signup") {
       if (!signupOpen) {
         return (
-          <Shell title={t(lang, "loginTitle")} body={t(lang, "inviteOnlyNotice")} backToChooser>
+          <AuthEntryShell
+            title={t(lang, "loginTitle")}
+            body={t(lang, "inviteOnlyNotice")}
+            alertError={alertError}
+            {...shellBack}
+          >
             <div className="mt-8">
               <Button full onClick={() => setView("chooser")}>
                 {t(lang, "loginBackMethods")}
               </Button>
             </div>
-          </Shell>
+          </AuthEntryShell>
         );
       }
       return (
-        <Shell title={t(lang, "loginSignupTitle")} body={t(lang, "loginSignupBody")} backToChooser>
+        <AuthEntryShell
+          title={t(lang, "loginSignupTitle")}
+          body={t(lang, "loginSignupBody")}
+          alertError={alertError}
+          {...shellBack}
+        >
           <div className="card mt-8 space-y-4 p-5 sm:p-6">
             <Field id="signup-name" label={t(lang, "loginYourName")}>
               <VoiceInput id="signup-name" lang={lang} value={name} onChange={setName} autoComplete="name" />
@@ -414,13 +446,18 @@ export function AuthEntry() {
               {t(lang, "loginCreateAccount")}
             </Button>
           </div>
-        </Shell>
+        </AuthEntryShell>
       );
     }
 
     if (view === "forgot") {
       return (
-        <Shell title={t(lang, "loginForgotTitle")} body={t(lang, "loginForgotBody")} backToChooser>
+        <AuthEntryShell
+          title={t(lang, "loginForgotTitle")}
+          body={t(lang, "loginForgotBody")}
+          alertError={alertError}
+          {...shellBack}
+        >
           <div className="card mt-8 space-y-4 p-5 sm:p-6">
             <Field id="forgot-email" label={t(lang, "loginEmail")}>
               <input
@@ -438,13 +475,18 @@ export function AuthEntry() {
               {t(lang, "loginSendReset")}
             </Button>
           </div>
-        </Shell>
+        </AuthEntryShell>
       );
     }
 
     if (view === "reset") {
       return (
-        <Shell title={t(lang, "loginResetTitle")} body={t(lang, "loginResetBody")} backToChooser>
+        <AuthEntryShell
+          title={t(lang, "loginResetTitle")}
+          body={t(lang, "loginResetBody")}
+          alertError={alertError}
+          {...shellBack}
+        >
           <div className="card mt-8 space-y-4 p-5 sm:p-6">
             {hint ? <p className="text-sm text-navy/65">{hint}</p> : null}
             <Field id="reset-password" label={t(lang, "loginNewPassword")}>
@@ -463,7 +505,7 @@ export function AuthEntry() {
               {t(lang, "loginSavePassword")}
             </Button>
           </div>
-        </Shell>
+        </AuthEntryShell>
       );
     }
   }
