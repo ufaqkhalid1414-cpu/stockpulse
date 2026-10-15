@@ -252,9 +252,25 @@ export function AuthEntry() {
             <Button full variant="secondary" disabled={working} onClick={() => setView("email-login")}>
               {t(lang, "loginWithEmail")}
             </Button>
+            {signupOpen ? (
+              <Button full variant="secondary" disabled={working} onClick={() => setView("signup")}>
+                {t(lang, "loginCreateAccount")}
+              </Button>
+            ) : null}
           </div>
-          <p className="mt-6 text-center text-sm leading-relaxed text-navy/60">{t(lang, "inviteOnlyNotice")}</p>
+          <p className="mt-6 text-center text-sm leading-relaxed text-navy/60">
+            {signupOpen ? t(lang, "loginOpenSignupNotice") : t(lang, "inviteOnlyNotice")}
+          </p>
           <div className="mt-4 flex flex-col gap-3 text-center text-sm">
+            {signupOpen ? (
+              <button
+                type="button"
+                className="text-navy/60 underline-offset-4 hover:underline"
+                onClick={() => setView("signup")}
+              >
+                {t(lang, "loginNeedAccount")}
+              </button>
+            ) : null}
             <button
               type="button"
               className="text-navy/60 underline-offset-4 hover:underline"
@@ -352,7 +368,9 @@ export function AuthEntry() {
           alertError={alertError}
           {...shellBack}
         >
-          <p className="mt-4 text-sm leading-relaxed text-navy/60">{t(lang, "loginEmailInviteHint")}</p>
+          <p className="mt-4 text-sm leading-relaxed text-navy/60">
+            {signupOpen ? t(lang, "loginEmailOpenHint") : t(lang, "loginEmailInviteHint")}
+          </p>
           <div className="card mt-6 space-y-4 p-5 sm:p-6">
             <Field id="email-login" label={t(lang, "loginEmail")}>
               <input
@@ -379,6 +397,15 @@ export function AuthEntry() {
             <Button full disabled={working} onClick={() => emailAction("login")}>
               {t(lang, "verifyCode")}
             </Button>
+            {signupOpen ? (
+              <button
+                type="button"
+                className="w-full text-center text-sm text-navy/60 underline-offset-4 hover:underline"
+                onClick={() => setView("signup")}
+              >
+                {t(lang, "loginNeedAccount")}
+              </button>
+            ) : null}
             <button
               type="button"
               className="w-full text-center text-sm text-navy/60 underline-offset-4 hover:underline"
@@ -445,6 +472,13 @@ export function AuthEntry() {
             <Button full disabled={working} onClick={() => emailAction("signup")}>
               {t(lang, "loginCreateAccount")}
             </Button>
+            <button
+              type="button"
+              className="w-full text-center text-sm text-navy/60 underline-offset-4 hover:underline"
+              onClick={() => setView("email-login")}
+            >
+              {t(lang, "loginHaveAccount")}
+            </button>
           </div>
         </AuthEntryShell>
       );

@@ -556,6 +556,10 @@ const en = {
     "StockPulse is invite-only right now. Ask an owner to add your WhatsApp number, then log in.",
   loginEmailInviteHint:
     "Email login only works if this email was already added to the business. New email sign-up is closed. Use WhatsApp if you usually sign in that way.",
+  loginEmailOpenHint: "Use the email and password for your StockPulse account. New here? Create an account first.",
+  loginHaveAccount: "Already have an account? Log in",
+  loginNeedAccount: "New here? Create an account",
+  loginOpenSignupNotice: "Create an account with email, or log in with WhatsApp or Google when those are set up.",
   loginGoogleInviteOnly: "Google sign-in is only for people already on a business.",
   loginWhatsapp: "Your WhatsApp number",
   loginWhatsappHint: "Include the country code. Example: +92 300 1234567",
