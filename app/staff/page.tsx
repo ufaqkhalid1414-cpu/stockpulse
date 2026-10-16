@@ -8,12 +8,23 @@ import { Button, Field, Lead } from "@/components/ui";
 import { VoiceInput } from "@/components/VoiceInput";
 import { formatAdded } from "@/lib/format";
 import { t, type CopyKey } from "@/lib/i18n";
+import { staffRemoveConfirmMessage } from "@/lib/staff-management";
 import { permissionLabelKey } from "@/lib/staff-permission";
 import { useStock } from "@/lib/store";
 import type { OwnerAccess, Permission } from "@/lib/types";
 
 export default function StaffPage() {
-  const { state, addStaff, addOwner, removeOwner, role, busy, error: storeError } = useStock();
+  const {
+    state,
+    addStaff,
+    removeStaff,
+    updateStaffPermission,
+    addOwner,
+    removeOwner,
+    role,
+    busy,
+    error: storeError,
+  } = useStock();
   const lang = state.language;
   const isEqualOwner = role === "equal_owner";
 
@@ -24,6 +35,8 @@ export default function StaffPage() {
   const [personName, setPersonName] = useState("");
   const [permission, setPermission] = useState<Permission>("view");
   const [staffError, setStaffError] = useState("");
+  const [staffNotice, setStaffNotice] = useState("");
+  const [actingStaffId, setActingStaffId] = useState<string | null>(null);
 
   const [ownerName, setOwnerName] = useState("");
   const [ownerPhone, setOwnerPhone] = useState("");
@@ -31,6 +44,7 @@ export default function StaffPage() {
   const [ownerError, setOwnerError] = useState("");
 
   const [showSuccess, setShowSuccess] = useState(false);
+  const [successLabel, setSuccessLabel] = useState("");
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -39,7 +53,8 @@ export default function StaffPage() {
     };
   }, []);
 
-  function flashSuccess() {
+  function flashSuccess(label: string) {
+    setSuccessLabel(label);
     setShowSuccess(true);
     if (successTimerRef.current) clearTimeout(successTimerRef.current);
     successTimerRef.current = setTimeout(() => setShowSuccess(false), 1100);
@@ -84,9 +99,9 @@ export default function StaffPage() {
       setPermission("view");
       setStaffError("");
       setStaffOpen(false);
-      flashSuccess();
+      flashSuccess(t(lang, "personAddedSuccess"));
     } catch {
-      /* store error */
+      /* store error — never show success */
     }
   }
 
@@ -113,14 +128,48 @@ export default function StaffPage() {
       setOwnerAccess("equal");
       setOwnerError("");
       setOwnerOpen(false);
-      flashSuccess();
+      flashSuccess(t(lang, "personAddedSuccess"));
     } catch {
-      /* store error */
+      /* store error — never show success */
     }
   }
 
   function staffPermissionLabel(p: Permission) {
     return t(lang, permissionLabelKey(p) as CopyKey);
+  }
+
+  async function onChangeStaffPermission(staffId: string, next: Permission) {
+    if (busy || actingStaffId) return;
+    setActingStaffId(staffId);
+    setStaffNotice("");
+    try {
+      await updateStaffPermission(staffId, next);
+      setStaffNotice(t(lang, "staffPermissionSaved"));
+      flashSuccess(t(lang, "staffPermissionSaved"));
+    } catch {
+      /* store error — never show success */
+    } finally {
+      setActingStaffId(null);
+    }
+  }
+
+  async function onRemoveStaff(member: { id: string; name: string; phone: string }) {
+    if (busy || actingStaffId) return;
+    const confirmed = window.confirm(
+      t(lang, "removeStaffConfirm", { name: member.name }) || staffRemoveConfirmMessage(member.name, member.phone),
+    );
+    if (!confirmed) return;
+    setActingStaffId(member.id);
+    setStaffNotice("");
+    try {
+      await removeStaff(member.id);
+      setStaffNotice(t(lang, "staffRemoved"));
+      flashSuccess(t(lang, "staffRemoved"));
+    } catch {
+      /* store error — never show success */
+    } finally {
+      setActingStaffId(null);
+    }
   }
 
   return (
@@ -129,7 +178,7 @@ export default function StaffPage() {
 
       <SuccessPopup
         open={showSuccess}
-        label={t(lang, "personAddedSuccess")}
+        label={successLabel || t(lang, "personAddedSuccess")}
         onDismiss={() => setShowSuccess(false)}
       />
 
@@ -222,10 +271,13 @@ export default function StaffPage() {
                     variant="secondary"
                     disabled={busy}
                     onClick={async () => {
+                      if (!window.confirm(t(lang, "removeStaffConfirm", { name: owner.name }))) return;
                       try {
                         await removeOwner(owner.id);
+                        setStaffNotice(t(lang, "ownerRemoved"));
+                        flashSuccess(t(lang, "ownerRemoved"));
                       } catch {
-                        /* store error */
+                        /* store error — never show success */
                       }
                     }}
                   >
@@ -324,17 +376,51 @@ export default function StaffPage() {
           </form>
         ) : null}
 
+        {staffNotice ? <p className="mt-3 text-sm font-medium text-pine">{staffNotice}</p> : null}
+        {storeError && !staffOpen && !ownerOpen ? (
+          <p className="mt-3 text-sm font-medium text-clay">{storeError}</p>
+        ) : null}
+
         <ul className="mt-4 space-y-3">
-          {state.staff.map((member) => (
-            <li key={member.id} className="card p-5">
-              <p className="text-lg font-bold text-navy">{member.name}</p>
-              <p className="mt-1 text-sm font-bold text-navy" dir="ltr">
-                {member.phone}
-              </p>
-              <p className="mt-1 text-sm text-navy/60">{formatAdded(member.addedAt, lang)}</p>
-              <p className="mt-3 text-sm font-semibold text-navy">{staffPermissionLabel(member.permission)}</p>
-            </li>
-          ))}
+          {state.staff.map((member) => {
+            const rowBusy = busy || actingStaffId === member.id;
+            return (
+              <li key={member.id} className="card space-y-3 p-5">
+                <div>
+                  <p className="text-lg font-bold text-navy">{member.name}</p>
+                  <p className="mt-1 text-sm font-bold text-navy" dir="ltr">
+                    {member.phone}
+                  </p>
+                  <p className="mt-1 text-sm text-navy/60">{formatAdded(member.addedAt, lang)}</p>
+                </div>
+                <div>
+                  <p className="mb-1.5 text-sm font-medium text-navy/80">{t(lang, "staffPermissionLabel")}</p>
+                  <Menu
+                    label={t(lang, "staffPermissionLabel")}
+                    value={member.permission}
+                    align="start"
+                    options={[
+                      { value: "view", label: staffPermissionLabel("view") },
+                      { value: "add", label: staffPermissionLabel("add") },
+                      { value: "sell", label: staffPermissionLabel("sell") },
+                      { value: "move", label: staffPermissionLabel("move") },
+                    ]}
+                    onChange={(value) => {
+                      if (value === member.permission || rowBusy) return;
+                      void onChangeStaffPermission(member.id, value as Permission);
+                    }}
+                  />
+                </div>
+                <Button
+                  variant="secondary"
+                  disabled={rowBusy}
+                  onClick={() => void onRemoveStaff(member)}
+                >
+                  {rowBusy && actingStaffId === member.id ? t(lang, "staffManaging") : t(lang, "removeStaff")}
+                </Button>
+              </li>
+            );
+          })}
         </ul>
       </section>
     </AppShell>

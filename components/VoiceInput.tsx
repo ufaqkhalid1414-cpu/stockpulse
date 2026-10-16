@@ -3,6 +3,16 @@
 import { useCallback, useEffect, useRef, useState, type InputHTMLAttributes } from "react";
 import type { Lang } from "@/lib/i18n";
 import { t } from "@/lib/i18n";
+import {
+  normalizeSpokenValue,
+  speechLocaleFor,
+  spokenValueHasDigits,
+  type SpeechLangPreference,
+} from "@/lib/speech";
+import {
+  getSpeechLangPreference,
+  subscribeSpeechLangPreference,
+} from "@/lib/speech-preference";
 
 type SpeechRecognitionResultLike = {
   isFinal: boolean;
@@ -29,18 +39,6 @@ type SpeechRecognitionLike = {
 
 type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 
-const SPEECH_LOCALE: Record<Lang, string> = {
-  en: "en-US",
-  ur: "ur-PK",
-  zh: "zh-CN",
-  de: "de-DE",
-  ar: "ar-SA",
-  es: "es-ES",
-  fr: "fr-FR",
-  hi: "hi-IN",
-  pt: "pt-BR",
-};
-
 function getSpeechRecognition(): SpeechRecognitionCtor | null {
   if (typeof window === "undefined") return null;
   const w = window as Window & {
@@ -55,20 +53,6 @@ function isEmbeddedBrowser() {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent;
   return /\bElectron\b/i.test(ua) || /\bCursor\b/i.test(ua);
-}
-
-function normalizeSpokenValue(spoken: string, inputMode: string | undefined) {
-  const trimmed = spoken.trim();
-  if (!trimmed) return "";
-  if (inputMode !== "decimal" && inputMode !== "numeric" && inputMode !== "tel") {
-    return trimmed;
-  }
-  if (inputMode === "tel") {
-    const tel = trimmed.replace(/[^\d+]/g, "");
-    return tel || trimmed;
-  }
-  const digits = trimmed.replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
-  return digits?.[0] ?? trimmed;
 }
 
 function MicIcon({ listening }: { listening: boolean }) {
@@ -112,6 +96,7 @@ export function VoiceInput({
   const [listening, setListening] = useState(false);
   const [supported, setSupported] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
+  const [speechPref, setSpeechPref] = useState<SpeechLangPreference>("auto");
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   /** User wants the mic on — stay listening until they tap stop. */
   const wantListeningRef = useRef(false);
@@ -121,12 +106,19 @@ export function VoiceInput({
   const valueRef = useRef(value);
   const langRef = useRef(lang);
   const inputModeRef = useRef(inputMode);
+  const speechPrefRef = useRef<SpeechLangPreference>("auto");
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   onChangeRef.current = onChange;
   valueRef.current = value;
   langRef.current = lang;
   inputModeRef.current = inputMode;
+  speechPrefRef.current = speechPref;
+
+  useEffect(() => {
+    setSpeechPref(getSpeechLangPreference());
+    return subscribeSpeechLangPreference(setSpeechPref);
+  }, []);
 
   useEffect(() => {
     const hasApi = Boolean(getSpeechRecognition());
@@ -149,8 +141,14 @@ export function VoiceInput({
   const applyTranscript = useCallback((sessionText: string) => {
     const spoken = normalizeSpokenValue(sessionText, inputModeRef.current);
     if (!spoken) return;
-    if (inputModeRef.current === "decimal" || inputModeRef.current === "numeric") {
+    const mode = inputModeRef.current;
+    if (mode === "decimal" || mode === "numeric") {
       onChangeRef.current(spoken);
+      if (!spokenValueHasDigits(spoken)) {
+        setStatus(t(langRef.current, "voiceCheckNumber"));
+      } else {
+        setStatus(null);
+      }
       return;
     }
     const base = baseValueRef.current.trim();
@@ -187,7 +185,7 @@ export function VoiceInput({
     recognitionRef.current?.abort();
 
     const recognition = new Ctor();
-    recognition.lang = SPEECH_LOCALE[langRef.current] || "en-US";
+    recognition.lang = speechLocaleFor(langRef.current, speechPrefRef.current);
     // Keep listening across pauses until the user taps the mic again.
     recognition.continuous = true;
     recognition.interimResults = true;
@@ -227,18 +225,23 @@ export function VoiceInput({
         return;
       }
       if (code === "language-not-supported") {
-        try {
-          recognition.lang = "en-US";
-          recognition.start();
-          setListening(true);
-          setStatus(t(langRef.current, "voiceEnglishFallback"));
-          return;
-        } catch {
-          wantListeningRef.current = false;
-          setListening(false);
-          setStatus(t(langRef.current, "voiceFailed"));
-          return;
+        const preferred = speechPrefRef.current;
+        const requested = speechLocaleFor(langRef.current, preferred);
+        if (requested !== "en-US") {
+          try {
+            recognition.lang = "en-US";
+            recognition.start();
+            setListening(true);
+            setStatus(t(langRef.current, "voiceEnglishFallback"));
+            return;
+          } catch {
+            /* fall through */
+          }
         }
+        wantListeningRef.current = false;
+        setListening(false);
+        setStatus(t(langRef.current, "voiceLanguageUnsupported"));
+        return;
       }
       if (code === "network") {
         wantListeningRef.current = false;
@@ -310,6 +313,7 @@ export function VoiceInput({
         disabled={disabled}
         inputMode={inputMode}
         onChange={(event) => onChange(event.target.value)}
+        dir={inputMode === "tel" || inputMode === "decimal" || inputMode === "numeric" ? "ltr" : undefined}
         {...rest}
       />
       <button
@@ -325,7 +329,11 @@ export function VoiceInput({
       >
         <MicIcon listening={listening} />
       </button>
-      {status ? <p className="mt-1.5 text-sm text-clay">{status}</p> : null}
+      {status ? (
+        <p className="mt-1.5 text-sm text-clay" role="status">
+          {status}
+        </p>
+      ) : null}
     </div>
   );
 }

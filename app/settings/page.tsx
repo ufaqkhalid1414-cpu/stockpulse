@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { InstallStockPulse } from "@/components/InstallStockPulse";
 import { LanguageMenu } from "@/components/LanguageMenu";
+import { SpeechLanguageMenu } from "@/components/SpeechLanguageMenu";
 import { AppLink, Button, CheckIcon, CrossIcon, Field, Lead } from "@/components/ui";
 import { VoiceInput } from "@/components/VoiceInput";
 import { formatDateTime, formatWhen } from "@/lib/format";
@@ -90,6 +91,7 @@ export default function SettingsPage() {
   const [reportDeliveryOpen, setReportDeliveryOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [notice, setNotice] = useState("");
+  const [nameError, setNameError] = useState("");
   const [shopDomain, setShopDomain] = useState("");
   const [shopToken, setShopToken] = useState("");
   const [showBackupHistory, setShowBackupHistory] = useState(false);
@@ -118,6 +120,10 @@ export default function SettingsPage() {
     ...DEFAULT_PREFS,
     ...(myOwner?.notificationPrefs || {}),
   };
+
+  useEffect(() => {
+    if (error) setNotice("");
+  }, [error]);
 
   const loadSystemStatus = useCallback(async () => {
     if (!isOwner) {
@@ -155,6 +161,12 @@ export default function SettingsPage() {
         title={state.lastBackup ? t(lang, "settingsLeadOk") : t(lang, "settingsLeadNone")}
         support={state.lastBackup ? t(lang, "settingsLeadOkSupport") : t(lang, "settingsLeadNoneSupport")}
       />
+
+      {notice ? (
+        <p className="mt-4 text-sm font-medium text-pine" role="status">
+          {notice}
+        </p>
+      ) : null}
 
       {isOwner ? (
         <div className="card mt-6 space-y-4 p-5 sm:p-6">
@@ -249,19 +261,25 @@ export default function SettingsPage() {
           variant="secondary"
           disabled={busy}
           onClick={async () => {
-            await runBackup();
-            setBackupFlash(true);
-            setShowBackupHistory(true);
-            window.setTimeout(() => setBackupFlash(false), 2000);
-            void loadSystemStatus();
+            setNotice("");
+            try {
+              await runBackup();
+              setBackupFlash(true);
+              setShowBackupHistory(true);
+              setNotice(t(lang, "backupDone"));
+              window.setTimeout(() => setBackupFlash(false), 2000);
+              void loadSystemStatus();
+            } catch {
+              /* store error — do not flash success */
+            }
           }}
         >
-          {backupFlash ? t(lang, "backupDone") : t(lang, "runBackupNow")}
+          {busy ? t(lang, "savingEllipsis") : backupFlash ? t(lang, "backupDone") : t(lang, "runBackupNow")}
         </Button>
 
         <button
           type="button"
-          className="flex w-full items-center justify-between rounded-xl border-2 border-navy/20 bg-cream px-4 py-4 text-left transition hover:border-navy/35"
+          className="flex w-full items-center justify-between rounded-xl border-2 border-navy/20 bg-cream px-4 py-4 text-start transition hover:border-navy/35"
           onClick={() => setShowBackupHistory((open) => !open)}
           aria-expanded={showBackupHistory}
         >
@@ -311,8 +329,24 @@ export default function SettingsPage() {
           <p className="mb-2 text-sm font-medium text-navy/80">{t(lang, "language")}</p>
           <LanguageMenu align="start" />
         </div>
-        <Field id="biz" label={t(lang, "businessName")}>
-          <VoiceInput id="biz" lang={lang} value={name} onChange={setName} />
+        <div>
+          <p className="mb-2 text-sm font-medium text-navy/80">{t(lang, "voiceLanguage")}</p>
+          <SpeechLanguageMenu align="start" />
+          <p className="mt-1.5 text-xs text-navy/55">{t(lang, "voiceLanguageHint")}</p>
+          {lang === "ur" ? (
+            <p className="mt-1 text-xs text-navy/55">{t(lang, "voiceLanguageUrduNote")}</p>
+          ) : null}
+        </div>
+        <Field id="biz" label={t(lang, "businessName")} error={nameError || undefined}>
+          <VoiceInput
+            id="biz"
+            lang={lang}
+            value={name}
+            onChange={(next) => {
+              setName(next);
+              if (nameError) setNameError("");
+            }}
+          />
         </Field>
         <Field id="owner-wa" label={t(lang, "ownerWhatsapp")}>
           <input
@@ -328,13 +362,22 @@ export default function SettingsPage() {
           <Button
             disabled={busy}
             onClick={async () => {
-              if (!name.trim()) return;
-              await setBusinessName(name.trim());
-              setSaved(true);
-              window.setTimeout(() => setSaved(false), 1800);
+              if (!name.trim()) {
+                setNameError(t(lang, "settingsNameRequired"));
+                return;
+              }
+              setNotice("");
+              try {
+                await setBusinessName(name.trim());
+                setSaved(true);
+                setNotice(t(lang, "saved"));
+                window.setTimeout(() => setSaved(false), 1800);
+              } catch {
+                /* store error — do not show saved */
+              }
             }}
           >
-            {saved ? t(lang, "saved") : t(lang, "saveChanges")}
+            {busy ? t(lang, "savingEllipsis") : saved ? t(lang, "saved") : t(lang, "saveChanges")}
           </Button>
           <Button
             variant="secondary"
@@ -705,6 +748,7 @@ export default function SettingsPage() {
                     full
                     disabled={busy}
                     onClick={async () => {
+                      setNotice("");
                       try {
                         const result = await sendDailyReport("whatsapp");
                         setReportPreview(result.preview);
@@ -712,17 +756,18 @@ export default function SettingsPage() {
                         setReportDeliveryOpen(false);
                         void loadSystemStatus();
                       } catch {
-                        /* error shown below */
+                        /* store error — never claim report sent */
                       }
                     }}
                   >
-                    {t(lang, "reportViaWhatsApp")}
+                    {busy ? t(lang, "savingEllipsis") : t(lang, "reportViaWhatsApp")}
                   </Button>
                   <Button
                     full
                     variant="secondary"
                     disabled={busy}
                     onClick={async () => {
+                      setNotice("");
                       try {
                         const result = await sendDailyReport("email");
                         setReportPreview(result.preview);
@@ -730,11 +775,11 @@ export default function SettingsPage() {
                         setReportDeliveryOpen(false);
                         void loadSystemStatus();
                       } catch {
-                        /* error shown below */
+                        /* store error — never claim email sent */
                       }
                     }}
                   >
-                    {t(lang, "reportViaEmail")}
+                    {busy ? t(lang, "savingEllipsis") : t(lang, "reportViaEmail")}
                   </Button>
                 </div>
                 <button
@@ -832,14 +877,17 @@ export default function SettingsPage() {
             ) : null}
           </div>
 
-          {notice ? <p className="text-sm font-medium text-pine">{notice}</p> : null}
           {reportPreview ? (
             <div>
               <p className="text-sm font-medium text-navy/70">{t(lang, "reportPreview")}</p>
               <pre className="mt-2 whitespace-pre-wrap rounded-xl bg-cream p-3 text-sm text-navy">{reportPreview}</pre>
             </div>
           ) : null}
-          {error ? <p className="text-sm font-medium text-clay">{error}</p> : null}
+          {error ? (
+            <p className="text-sm font-medium text-clay" role="alert">
+              {error}
+            </p>
+          ) : null}
         </div>
       ) : null}
 

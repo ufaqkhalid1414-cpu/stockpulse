@@ -188,7 +188,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           ) : null}
           {error ? (
             <div className="mb-4 rounded-xl border border-clay/30 bg-clay/10 px-4 py-3 text-sm text-clay" role="alert">
-              <p className="font-semibold">{t(lang, "offlineBanner")}</p>
+              <p className="font-semibold">
+                {/network|connection|offline|unavailable|fetch/i.test(error)
+                  ? t(lang, "offlineBanner")
+                  : t(lang, "actionErrorBanner")}
+              </p>
               <p className="mt-1">{error}</p>
             </div>
           ) : null}

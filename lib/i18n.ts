@@ -313,6 +313,12 @@ const en = {
   staffEmptyLead: "No one else is added yet",
   staffEmptySupport: "Add someone by their WhatsApp number when you want help.",
   addStaff: "Add staff",
+  removeStaff: "Remove staff",
+  removeStaffConfirm: "Remove {name}? They will lose access immediately.",
+  staffPermissionLabel: "Permission",
+  staffPermissionSaved: "Staff permission updated",
+  staffRemoved: "Staff removed",
+  staffManaging: "Saving…",
   staffName: "Name",
   staffNamePlaceholder: "e.g. Ahmed",
   whatsapp: "WhatsApp number",
@@ -519,9 +525,22 @@ const en = {
     "Voice does not work inside Cursor’s preview. Open http://localhost:3000 in Google Chrome or Edge.",
   voiceNoSpeech: "Didn’t catch that — tap the mic and speak again.",
   voiceEnglishFallback: "That language isn’t available for voice here — listening in English.",
+  voiceLanguageUnsupported:
+    "This browser cannot listen in that language. Pick another voice language in Settings, or type instead.",
   voiceFailed: "Voice input failed. Tap the mic and try again.",
+  voiceCheckNumber: "Check the number in the field, then save. Typing still works.",
+  voiceLanguage: "Voice input language",
+  voiceLanguageHint:
+    "Which language you speak into the mic. Defaults to the app language. Change this if the mic misunderstands you.",
+  voiceLanguageSame: "Same as app language",
+  voiceLanguageUrduNote:
+    "Urdu voice depends on your browser. If it fails, try Hindi or English here — the rest of the app can stay in Urdu.",
   sampleBanner: "You're viewing sample data. When you add your first real product, the sample stock will be cleared.",
   offlineBanner: "Connection problem",
+  actionErrorBanner: "Couldn't finish that",
+  photoReadFailed: "That photo could not be read. Try another image.",
+  ownerRemoved: "Owner removed",
+  settingsNameRequired: "Add a business name before saving.",
   whatsappSendFailed: "WhatsApp could not send. Check the number and that the phone joined the Twilio sandbox.",
   loginTitle: "Log in",
   loginBody: "Choose how you want to sign in. WhatsApp, Google, or email — then you're in.",
@@ -655,8 +674,26 @@ function pack(dict: Partial<{ [K in CopyKey]: string }>): { [K in CopyKey]: stri
 
 const ur = pack({
   voiceSpeak: "اس خانے کے لیے بولیں",
-  voiceListening: "سن رہا ہے… روکنے کے لیے دوبارہ دبائیں",
+  voiceListening: "سن رہا ہے… بولتے رہیں، ختم پر مائیک دوبارہ دبائیں",
   voiceUnsupported: "اس براؤزر میں آواز سے لکھنا دستیاب نہیں",
+  voiceNeedsSecure: "آواز کے لیے HTTPS یا localhost چاہیے۔ Chrome میں کھولیں۔",
+  voicePermissionDenied: "مائیک کی اجازت بند ہے۔ براؤزر سیٹنگز میں اس سائٹ کے لیے مائیک آن کریں۔",
+  voiceNetwork:
+    "یہ آپ کا انٹرنیٹ نہیں۔ Chrome کی آواز سروس ناکام ہوئی — حقیقی Chrome یا Edge میں کھولیں (Cursor کی پیش‌نظری نہیں)، مائیک کی اجازت دیں، پھر دوبارہ کوشش کریں۔ لکھنا اب بھی چلتا ہے۔",
+  voiceUseChrome:
+    "Cursor کی پیش‌نظری میں آواز نہیں چلتی۔ Google Chrome یا Edge میں http://localhost:3000 کھولیں۔",
+  voiceNoSpeech: "سمجھ نہیں آیا — مائیک دبا کر دوبارہ بولیں۔",
+  voiceEnglishFallback: "اس زبان میں آواز دستیاب نہیں — اب انگریزی میں سن رہا ہے۔",
+  voiceLanguageUnsupported:
+    "یہ براؤزر اس زبان میں نہیں سن سکتا۔ ترتیبات میں دوسری آواز کی زبان چنیں، یا خود لکھیں۔",
+  voiceFailed: "آواز سے لکھنا ناکام۔ مائیک دبا کر دوبارہ کوشش کریں۔",
+  voiceCheckNumber: "خانے میں نمبر چیک کریں، پھر محفوظ کریں۔ لکھنا اب بھی چلتا ہے۔",
+  voiceLanguage: "آواز کی زبان",
+  voiceLanguageHint:
+    "مائیک میں آپ کون سی زبان بولیں گے۔ پہلے ایپ کی زبان ہوتی ہے۔ اگر مائیک غلط سمجھے تو یہاں بدلیں۔",
+  voiceLanguageSame: "ایپ کی زبان جیسی",
+  voiceLanguageUrduNote:
+    "اردو آواز براؤزر پر منحصر ہے۔ اگر نہ چلے تو یہاں ہندی یا انگریزی آزمائیں — باقی ایپ اردو رہ سکتی ہے۔",
   installStockPulse: "اسٹاک پلس انسٹال کریں",
   installIosHint: "انسٹال کرنے کے لیے: Share دبائیں، پھر Add to Home Screen۔",
   installDesktopHint:
@@ -852,6 +889,23 @@ const ur = pack({
 });
 
 const zh = pack({
+  voiceSpeak: "说话填写此栏",
+  voiceListening: "正在听…说完再点麦克风",
+  voiceUnsupported: "此浏览器不支持语音输入",
+  voiceNeedsSecure: "语音需要 HTTPS 或 localhost。请用 Chrome 打开。",
+  voicePermissionDenied: "麦克风权限被拒绝。请在浏览器设置中允许本站使用麦克风。",
+  voiceNetwork:
+    "不是您的网络问题。Chrome 语音服务失败 — 请用真正的 Chrome 或 Edge 打开（不要用 Cursor 预览），允许麦克风后再试。仍可手动输入。",
+  voiceUseChrome: "Cursor 预览里语音不可用。请用 Chrome 或 Edge 打开 http://localhost:3000。",
+  voiceNoSpeech: "没听清 — 再点麦克风说一次。",
+  voiceEnglishFallback: "此语言暂不可用语音 — 正在用英语听。",
+  voiceLanguageUnsupported: "此浏览器无法用该语言听写。请在设置中换语音语言，或直接打字。",
+  voiceFailed: "语音输入失败。再点麦克风试试。",
+  voiceCheckNumber: "请核对栏里的数字再保存。仍可手动输入。",
+  voiceLanguage: "语音输入语言",
+  voiceLanguageHint: "对着麦克风说的语言。默认与应用语言相同。听不准时可在此更改。",
+  voiceLanguageSame: "与应用语言相同",
+  voiceLanguageUrduNote: "乌尔都语语音取决于浏览器。若失败，可在此改用印地语或英语，应用界面仍可保持乌尔都语。",
   installStockPulse: "安装 StockPulse",
   installIosHint: "安装方式：点分享，然后选“添加到主屏幕”。",
   installDesktopHint:
@@ -997,6 +1051,27 @@ const zh = pack({
 });
 
 const de = pack({
+  voiceSpeak: "Sprechen, um dieses Feld zu füllen",
+  voiceListening: "Hört zu… tippen Sie das Mikrofon zum Beenden",
+  voiceUnsupported: "Spracheingabe wird in diesem Browser nicht unterstützt",
+  voiceNeedsSecure: "Sprache braucht HTTPS oder localhost. In Chrome öffnen.",
+  voicePermissionDenied: "Mikrofonzugriff blockiert. Erlauben Sie das Mikrofon für diese Seite.",
+  voiceNetwork:
+    "Nicht Ihr Internet. Chromes Sprachdienst ist fehlgeschlagen — öffnen Sie StockPulse in echtem Chrome oder Edge (nicht Cursor-Vorschau), erlauben Sie das Mikrofon und versuchen Sie es erneut. Tippen geht weiterhin.",
+  voiceUseChrome:
+    "Sprache funktioniert nicht in der Cursor-Vorschau. Öffnen Sie http://localhost:3000 in Chrome oder Edge.",
+  voiceNoSpeech: "Nicht verstanden — tippen Sie das Mikrofon und sprechen Sie erneut.",
+  voiceEnglishFallback: "Diese Sprache ist hier nicht verfügbar — hört auf Englisch.",
+  voiceLanguageUnsupported:
+    "Dieser Browser kann diese Sprache nicht hören. Wählen Sie in den Einstellungen eine andere Sprachsprache oder tippen Sie.",
+  voiceFailed: "Spracheingabe fehlgeschlagen. Tippen Sie das Mikrofon und versuchen Sie es erneut.",
+  voiceCheckNumber: "Prüfen Sie die Zahl im Feld und speichern Sie dann. Tippen geht weiterhin.",
+  voiceLanguage: "Sprache für die Eingabe",
+  voiceLanguageHint:
+    "Welche Sprache Sie ins Mikrofon sprechen. Standard ist die App-Sprache. Ändern Sie das, wenn das Mikrofon Sie falsch versteht.",
+  voiceLanguageSame: "Wie App-Sprache",
+  voiceLanguageUrduNote:
+    "Urdu-Sprache hängt vom Browser ab. Wenn es fehlschlägt, versuchen Sie hier Hindi oder Englisch — die App kann auf Urdu bleiben.",
   installStockPulse: "StockPulse installieren",
   installIosHint: "Zum Installieren: Teilen tippen, dann „Zum Home-Bildschirm“.",
   installDesktopHint:
@@ -1143,6 +1218,27 @@ const de = pack({
 });
 
 const ar = pack({
+  voiceSpeak: "تكلم لملء هذا الحقل",
+  voiceListening: "يستمع… اضغط الميكروفون عند الانتهاء",
+  voiceUnsupported: "الإدخال الصوتي غير مدعوم في هذا المتصفح",
+  voiceNeedsSecure: "الصوت يحتاج HTTPS أو localhost. افتح التطبيق في Chrome.",
+  voicePermissionDenied: "إذن الميكروفون مرفوض. اسمح بالميكروفون لهذا الموقع من إعدادات المتصفح.",
+  voiceNetwork:
+    "هذه ليست مشكلة الإنترنت. خدمة صوت Chrome فشلت — افتح StockPulse في Chrome أو Edge الحقيقي (وليس معاينة Cursor)، واسمح بالميكروفون، ثم أعد المحاولة. الكتابة ما زالت تعمل.",
+  voiceUseChrome:
+    "الصوت لا يعمل داخل معاينة Cursor. افتح http://localhost:3000 في Chrome أو Edge.",
+  voiceNoSpeech: "لم يُفهم — اضغط الميكروفون وتكلم مرة أخرى.",
+  voiceEnglishFallback: "هذه اللغة غير متاحة للصوت هنا — يستمع بالإنجليزية.",
+  voiceLanguageUnsupported:
+    "هذا المتصفح لا يستطيع الاستماع بهذه اللغة. اختر لغة صوت أخرى من الإعدادات، أو اكتب يدويًا.",
+  voiceFailed: "فشل الإدخال الصوتي. اضغط الميكروفون وحاول مجددًا.",
+  voiceCheckNumber: "تحقق من الرقم في الحقل ثم احفظ. الكتابة ما زالت تعمل.",
+  voiceLanguage: "لغة الإدخال الصوتي",
+  voiceLanguageHint:
+    "اللغة التي تتكلم بها في الميكروفون. الافتراضي كلغة التطبيق. غيّرها إذا أخطأ الميكروفون.",
+  voiceLanguageSame: "نفس لغة التطبيق",
+  voiceLanguageUrduNote:
+    "صوت الأردية يعتمد على المتصفح. إن فشل، جرّب هنا الهندية أو الإنجليزية — ويمكن إبقاء بقية التطبيق بالأردية.",
   installStockPulse: "تثبيت StockPulse",
   installIosHint: "للتثبيت: اضغط مشاركة ثم أضف إلى الشاشة الرئيسية.",
   installDesktopHint:
@@ -1289,6 +1385,27 @@ const ar = pack({
 });
 
 const es = pack({
+  voiceSpeak: "Habla para rellenar este campo",
+  voiceListening: "Escuchando… pulsa el micrófono al terminar",
+  voiceUnsupported: "La voz no está disponible en este navegador",
+  voiceNeedsSecure: "La voz necesita HTTPS o localhost. Ábrelo en Chrome.",
+  voicePermissionDenied: "Permiso del micrófono bloqueado. Permítelo para este sitio en el navegador.",
+  voiceNetwork:
+    "No es tu internet. Falló el servicio de voz de Chrome — abre StockPulse en Chrome o Edge real (no la vista previa de Cursor), permite el micrófono e inténtalo de nuevo. Seguir escribiendo funciona.",
+  voiceUseChrome:
+    "La voz no funciona en la vista previa de Cursor. Abre http://localhost:3000 en Chrome o Edge.",
+  voiceNoSpeech: "No se entendió — pulsa el micrófono y habla otra vez.",
+  voiceEnglishFallback: "Ese idioma no está disponible para voz aquí — escuchando en inglés.",
+  voiceLanguageUnsupported:
+    "Este navegador no puede escuchar en ese idioma. Elige otro idioma de voz en Ajustes, o escribe.",
+  voiceFailed: "Falló la entrada de voz. Pulsa el micrófono e inténtalo de nuevo.",
+  voiceCheckNumber: "Revisa el número en el campo y guarda. Seguir escribiendo funciona.",
+  voiceLanguage: "Idioma de la voz",
+  voiceLanguageHint:
+    "El idioma que hablas al micrófono. Por defecto es el del app. Cámbialo si el micrófono te entiende mal.",
+  voiceLanguageSame: "Igual que el idioma del app",
+  voiceLanguageUrduNote:
+    "La voz en urdu depende del navegador. Si falla, prueba hindi o inglés aquí — el resto puede seguir en urdu.",
   installStockPulse: "Instalar StockPulse",
   installIosHint: "Para instalar: toca Compartir y luego Añadir a pantalla de inicio.",
   installDesktopHint:
@@ -1435,6 +1552,27 @@ const es = pack({
 });
 
 const fr = pack({
+  voiceSpeak: "Parlez pour remplir ce champ",
+  voiceListening: "Écoute… appuyez sur le micro pour terminer",
+  voiceUnsupported: "La saisie vocale n'est pas prise en charge dans ce navigateur",
+  voiceNeedsSecure: "La voix nécessite HTTPS ou localhost. Ouvrez dans Chrome.",
+  voicePermissionDenied: "Micro bloqué. Autorisez le micro pour ce site dans le navigateur.",
+  voiceNetwork:
+    "Ce n'est pas votre connexion. Le service vocal de Chrome a échoué — ouvrez StockPulse dans Chrome ou Edge réel (pas l'aperçu Cursor), autorisez le micro, puis réessayez. La saisie clavier fonctionne toujours.",
+  voiceUseChrome:
+    "La voix ne fonctionne pas dans l'aperçu Cursor. Ouvrez http://localhost:3000 dans Chrome ou Edge.",
+  voiceNoSpeech: "Pas compris — appuyez sur le micro et reparlez.",
+  voiceEnglishFallback: "Cette langue n'est pas disponible pour la voix ici — écoute en anglais.",
+  voiceLanguageUnsupported:
+    "Ce navigateur ne peut pas écouter cette langue. Choisissez une autre langue vocale dans Réglages, ou tapez.",
+  voiceFailed: "Échec de la saisie vocale. Appuyez sur le micro et réessayez.",
+  voiceCheckNumber: "Vérifiez le nombre dans le champ, puis enregistrez. La saisie clavier fonctionne toujours.",
+  voiceLanguage: "Langue de la voix",
+  voiceLanguageHint:
+    "La langue que vous parlez au micro. Par défaut, celle de l'app. Changez-la si le micro vous comprend mal.",
+  voiceLanguageSame: "Comme la langue de l'app",
+  voiceLanguageUrduNote:
+    "L'ourdou vocal dépend du navigateur. En cas d'échec, essayez ici l'hindi ou l'anglais — l'app peut rester en ourdou.",
   installStockPulse: "Installer StockPulse",
   installIosHint: "Pour installer : touchez Partager, puis Sur l’écran d’accueil.",
   installDesktopHint:
@@ -1581,6 +1719,27 @@ const fr = pack({
 });
 
 const hi = pack({
+  voiceSpeak: "इस खाने के लिए बोलें",
+  voiceListening: "सुन रहा है… खत्म करने के लिए माइक दबाएँ",
+  voiceUnsupported: "इस ब्राउज़र में आवाज़ से लिखना उपलब्ध नहीं",
+  voiceNeedsSecure: "आवाज़ के लिए HTTPS या localhost चाहिए। Chrome में खोलें।",
+  voicePermissionDenied: "माइक की अनुमति बंद है। ब्राउज़र सेटिंग में इस साइट के लिए माइक चालू करें।",
+  voiceNetwork:
+    "यह आपका इंटरनेट नहीं। Chrome की आवाज़ सेवा असफल रही — असली Chrome या Edge में खोलें (Cursor प्रीव्यू नहीं), माइक की अनुमति दें, फिर फिर कोशिश करें। टाइप करना अभी भी चलता है।",
+  voiceUseChrome:
+    "Cursor प्रीव्यू में आवाज़ नहीं चलती। Chrome या Edge में http://localhost:3000 खोलें।",
+  voiceNoSpeech: "समझ नहीं आया — माइक दबाकर फिर बोलें।",
+  voiceEnglishFallback: "यह भाषा यहाँ आवाज़ के लिए उपलब्ध नहीं — अंग्रेज़ी में सुन रहा है।",
+  voiceLanguageUnsupported:
+    "यह ब्राउज़र उस भाषा में नहीं सुन सकता। सेटिंग में दूसरी आवाज़ भाषा चुनें, या टाइप करें।",
+  voiceFailed: "आवाज़ इनपुट असफल। माइक दबाकर फिर कोशिश करें।",
+  voiceCheckNumber: "खाने में नंबर जाँचें, फिर सेव करें। टाइप करना अभी भी चलता है।",
+  voiceLanguage: "आवाज़ की भाषा",
+  voiceLanguageHint:
+    "माइक में आप कौन-सी भाषा बोलेंगे। पहले ऐप की भाषा होती है। गलत समझे तो यहाँ बदलें।",
+  voiceLanguageSame: "ऐप की भाषा जैसी",
+  voiceLanguageUrduNote:
+    "उर्दू आवाज़ ब्राउज़र पर निर्भर है। अगर न चले तो यहाँ हिंदी या अंग्रेज़ी आज़माएँ — बाकी ऐप उर्दू रह सकता है।",
   installStockPulse: "StockPulse इंस्टॉल करें",
   installIosHint: "इंस्टॉल करने के लिए: Share टैप करें, फिर Add to Home Screen।",
   installDesktopHint:
@@ -1727,6 +1886,27 @@ const hi = pack({
 });
 
 const pt = pack({
+  voiceSpeak: "Fale para preencher este campo",
+  voiceListening: "Ouvindo… toque no microfone ao terminar",
+  voiceUnsupported: "Entrada por voz não é suportada neste navegador",
+  voiceNeedsSecure: "A voz precisa de HTTPS ou localhost. Abra no Chrome.",
+  voicePermissionDenied: "Microfone bloqueado. Permita o microfone para este site nas configurações.",
+  voiceNetwork:
+    "Não é a sua internet. O serviço de voz do Chrome falhou — abra o StockPulse no Chrome ou Edge real (não na prévia do Cursor), permita o microfone e tente de novo. Digitar ainda funciona.",
+  voiceUseChrome:
+    "A voz não funciona na prévia do Cursor. Abra http://localhost:3000 no Chrome ou Edge.",
+  voiceNoSpeech: "Não entendi — toque no microfone e fale de novo.",
+  voiceEnglishFallback: "Esse idioma não está disponível para voz aqui — ouvindo em inglês.",
+  voiceLanguageUnsupported:
+    "Este navegador não consegue ouvir nesse idioma. Escolha outro idioma de voz em Ajustes, ou digite.",
+  voiceFailed: "Falha na entrada por voz. Toque no microfone e tente de novo.",
+  voiceCheckNumber: "Confira o número no campo e salve. Digitar ainda funciona.",
+  voiceLanguage: "Idioma da voz",
+  voiceLanguageHint:
+    "O idioma que você fala no microfone. O padrão é o do app. Mude se o microfone entender errado.",
+  voiceLanguageSame: "Igual ao idioma do app",
+  voiceLanguageUrduNote:
+    "A voz em urdu depende do navegador. Se falhar, tente hindi ou inglês aqui — o restante pode ficar em urdu.",
   installStockPulse: "Instalar StockPulse",
   installIosHint: "Para instalar: toque em Compartilhar e depois Adicionar à Tela de Início.",
   installDesktopHint:

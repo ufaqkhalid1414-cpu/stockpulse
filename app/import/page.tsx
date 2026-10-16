@@ -194,7 +194,7 @@ export default function ImportPage() {
             ) : null}
 
             <Button type="button" full disabled={busy || importCount <= 0} onClick={() => void commitImport()}>
-              {t(lang, "importConfirm", { count: importCount })}
+              {busy ? t(lang, "savingEllipsis") : t(lang, "importConfirm", { count: importCount })}
             </Button>
           </div>
         ) : null}

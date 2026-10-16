@@ -48,6 +48,8 @@ export default function PriceHistoryPage() {
 
   const [saleQty, setSaleQty] = useState("1");
   const [saleUnit, setSaleUnit] = useState<QtyUnit>("piece");
+  const [saleError, setSaleError] = useState("");
+  const [priceError, setPriceError] = useState("");
   const [saleLocation, setSaleLocation] = useState<Location>("shop");
   const [newPrice, setNewPrice] = useState("");
   const [priceUnit, setPriceUnit] = useState<PriceUnit>("piece");
@@ -241,11 +243,19 @@ export default function PriceHistoryPage() {
           className="card mt-6 space-y-4 p-5 sm:p-6"
           onSubmit={async (event) => {
             event.preventDefault();
+            setSaleError("");
+            setFlash("");
             const entered = Number(saleQty);
-            if (!Number.isFinite(entered) || entered <= 0) return;
+            if (!Number.isFinite(entered) || entered <= 0) {
+              setSaleError(t(lang, "qtyInvalid"));
+              return;
+            }
             const unit: QtyUnit = canCarton ? saleUnit : "piece";
             const pieces = toPieceQty(entered, unit, ppc);
-            if (pieces <= 0) return;
+            if (pieces <= 0) {
+              setSaleError(t(lang, "qtyInvalid"));
+              return;
+            }
             try {
               await recordSale(product.id, saleLocation, pieces, crypto.randomUUID());
               setFlash(
@@ -259,7 +269,8 @@ export default function PriceHistoryPage() {
               );
               setSaleQty("1");
             } catch {
-              /* shown via store */
+              setFlash("");
+              /* store surfaces the error */
             }
           }}
         >
@@ -301,8 +312,18 @@ export default function PriceHistoryPage() {
                 ? t(lang, "cartonEqualsPieces", { count: formatQty(ppc) })
                 : undefined
             }
+            error={saleError || undefined}
           >
-            <VoiceInput id="sale-qty" lang={lang} value={saleQty} onChange={setSaleQty} inputMode="decimal" />
+            <VoiceInput
+              id="sale-qty"
+              lang={lang}
+              value={saleQty}
+              onChange={(next) => {
+                setSaleQty(next);
+                if (saleError) setSaleError("");
+              }}
+              inputMode="decimal"
+            />
           </Field>
           {canCarton && saleUnit === "carton" && ppc && Number(saleQty) > 0 ? (
             <p className="text-sm text-navy/60">
@@ -312,7 +333,7 @@ export default function PriceHistoryPage() {
             </p>
           ) : null}
           <Button type="submit" disabled={busy}>
-            {t(lang, "save")}
+            {busy ? t(lang, "savingEllipsis") : t(lang, "save")}
           </Button>
         </form>
 
@@ -320,13 +341,21 @@ export default function PriceHistoryPage() {
           className="card mt-4 space-y-4 p-5 sm:p-6"
           onSubmit={async (event) => {
             event.preventDefault();
+            setPriceError("");
+            setFlash("");
             const amount = Number(newPrice);
-            if (!Number.isFinite(amount) || amount <= 0) return;
+            if (!Number.isFinite(amount) || amount <= 0) {
+              setPriceError(t(lang, "priceInvalid"));
+              return;
+            }
             let piecePrice = amount;
             if (canCarton && priceUnit === "carton" && ppc) {
               piecePrice = piecePriceFromCarton(amount, ppc);
             }
-            if (piecePrice <= 0) return;
+            if (piecePrice <= 0) {
+              setPriceError(t(lang, "priceInvalid"));
+              return;
+            }
             try {
               const result = await recordPurchasePrice(product.id, piecePrice);
               setFlash(
@@ -338,7 +367,8 @@ export default function PriceHistoryPage() {
               );
               setNewPrice("");
             } catch {
-              /* shown via store */
+              setFlash("");
+              /* store surfaces the error */
             }
           }}
         >
@@ -361,8 +391,18 @@ export default function PriceHistoryPage() {
           <Field
             id="new-price"
             label={canCarton && priceUnit === "carton" ? t(lang, "pricePerCarton") : t(lang, "pricePerPiece")}
+            error={priceError || undefined}
           >
-            <VoiceInput id="new-price" lang={lang} value={newPrice} onChange={setNewPrice} inputMode="decimal" />
+            <VoiceInput
+              id="new-price"
+              lang={lang}
+              value={newPrice}
+              onChange={(next) => {
+                setNewPrice(next);
+                if (priceError) setPriceError("");
+              }}
+              inputMode="decimal"
+            />
           </Field>
           {canCarton && priceUnit === "carton" && ppc && Number(newPrice) > 0 ? (
             <p className="text-sm text-navy/60">
@@ -370,12 +410,20 @@ export default function PriceHistoryPage() {
             </p>
           ) : null}
           <Button type="submit" disabled={busy}>
-            {t(lang, "save")}
+            {busy ? t(lang, "savingEllipsis") : t(lang, "save")}
           </Button>
         </form>
 
-        {flash ? <p className="mt-4 text-sm font-medium text-pine">{flash}</p> : null}
-        {error ? <p className="mt-2 text-sm font-medium text-clay">{error}</p> : null}
+        {flash ? (
+          <p className="mt-4 text-sm font-medium text-pine" role="status">
+            {flash}
+          </p>
+        ) : null}
+        {error ? (
+          <p className="mt-2 text-sm font-medium text-clay" role="alert">
+            {error}
+          </p>
+        ) : null}
       </div>
     </AppShell>
   );

@@ -93,6 +93,8 @@ type StoreValue = {
   archiveProduct: (productId: string) => Promise<void>;
   restoreProduct: (productId: string) => Promise<void>;
   addStaff: (name: string, phone: string, permission: Permission) => Promise<void>;
+  removeStaff: (staffId: string) => Promise<void>;
+  updateStaffPermission: (staffId: string, permission: Permission) => Promise<void>;
   addOwner: (name: string, phone: string, access: OwnerAccess) => Promise<void>;
   removeOwner: (ownerId: string) => Promise<void>;
   recordPurchasePrice: (productId: string, price: number) => Promise<{ alert: AlertItem | null }>;
@@ -422,6 +424,26 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     async (name: string, phoneNumber: string, permission: Permission) => {
       await run(async () => {
         const data = await stockAction({ action: "addStaff", name, phone: phoneNumber, permission });
+        setState(toState(data.business));
+      });
+    },
+    [run, stockAction],
+  );
+
+  const removeStaffMember = useCallback(
+    async (staffId: string) => {
+      await run(async () => {
+        const data = await stockAction({ action: "removeStaff", staffId });
+        setState(toState(data.business));
+      });
+    },
+    [run, stockAction],
+  );
+
+  const updateStaffPermissionMember = useCallback(
+    async (staffId: string, permission: Permission) => {
+      await run(async () => {
+        const data = await stockAction({ action: "updateStaffPermission", staffId, permission });
         setState(toState(data.business));
       });
     },
@@ -766,6 +788,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       archiveProduct,
       restoreProduct,
       addStaff,
+      removeStaff: removeStaffMember,
+      updateStaffPermission: updateStaffPermissionMember,
       addOwner: addOwnerMember,
       removeOwner: removeOwnerMember,
       recordSale,
@@ -817,6 +841,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       archiveProduct,
       restoreProduct,
       addStaff,
+      removeStaffMember,
+      updateStaffPermissionMember,
       addOwnerMember,
       removeOwnerMember,
       recordSale,
